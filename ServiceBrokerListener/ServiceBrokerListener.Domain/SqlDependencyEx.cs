@@ -198,7 +198,8 @@
         /// </summary>
         private const string SQL_FORMAT_EXECUTE_PROCEDURE = @"
                 USE [{0}]
-                EXEC {1}
+                IF OBJECT_ID ('{1}', 'P') IS NOT NULL
+                    EXEC {1}
             ";
 
         /// <summary>
@@ -208,7 +209,8 @@
         /// </summary>
         private const string SQL_FORMAT_DROP_PROCEDURE = @"
                 USE [{0}]
-                DROP PROCEDURE [{1}]
+                IF OBJECT_ID ('{1}', 'P') IS NOT NULL
+                    DROP PROCEDURE [{1}]
             ";
 
         #endregion
@@ -301,7 +303,20 @@
             this.Stop();
             this.InstallNotification();
 
-            var thread = new Thread(this.Loop)
+            ThreadStart threadLoop = () =>
+                {
+                    try
+                    {
+                        while (true)
+                        {
+                            ReceiveEvent();
+                            OnTableChanged();
+                        }
+                    }
+                    finally { UninstallNotification(); }
+                };
+
+            var thread = new Thread(threadLoop)
                              {
                                  Name =
                                      string.Format(
@@ -316,11 +331,12 @@
 
         public void Stop()
         {
-            var thread = this.listenerThread;
+            UninstallNotification();
 
+            var thread = this.listenerThread;
             if ((thread == null) || (!thread.IsAlive))
                 return;
-
+            
             thread.Abort();
             thread.Join();
         }
@@ -328,22 +344,6 @@
         public void Dispose()
         {
             Stop();
-        }
-
-        private void Loop()
-        {
-            try
-            {
-                while (true)
-                {
-                    ReceiveEvent();
-                    OnTableChanged();
-                }
-            }
-            finally
-            {
-                UninstallNotification();
-            }
         }
 
         private void ReceiveEvent()

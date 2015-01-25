@@ -3,7 +3,8 @@
     using System.Data;
     using System.Data.SqlClient;
     using System.Threading;
-    using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+    using NUnit.Framework;
 
     using ServiceBrokerListener.Domain;
 
@@ -12,7 +13,7 @@
     /// 1. Stress test.
     /// 2. Performance test.
     /// </summary>
-    [TestClass]
+    [TestFixture]
     public class SqlDependencyExTest
     {
         private const string TEST_DATABASE_NAME = "TestDatabase";
@@ -32,7 +33,7 @@
             "USE [" + TEST_DATABASE_NAME + "] DELETE FROM [" + TEST_TABLE_NAME
             + "] WHERE TestField = {0}";
 
-        [TestInitialize]
+        [SetUp]
         public void TestSetup()
         {
             const string CreateDatabaseScript = @"
@@ -46,7 +47,7 @@
             ExecuteNonQuery(CreateTableScript, MASTER_CONNECTION_STRING);
         }
 
-        [TestCleanup]
+        [TearDown]
         public void TestCleanup()
         {
             const string DropTestDatabaseScript = @"
@@ -60,37 +61,37 @@
             ExecuteNonQuery(DropTestDatabaseScript, MASTER_CONNECTION_STRING);
         }
 
-        [TestMethod]
+        [Test]
         public void NotificationTestWith10Changes()
         {
             NotificationTest(10);
         }
 
-        [TestMethod]
+        [Test]
         public void NotificationTestWith100Changes()
         {
             NotificationTest(100);
         }
 
-        [TestMethod]
+        [Test]
         public void NotificationTestWith1000Changes()
         {
             NotificationTest(100);
         }
 
-        [TestMethod]
+        [Test]
         public void ResourcesReleasabilityTestWith1000Changes()
         {
             ResourcesReleasabilityTest(100);
         }
 
-        [TestMethod]
+        [Test]
         public void ResourcesReleasabilityTestWith100Changes()
         {
             ResourcesReleasabilityTest(100);
         }
 
-        [TestMethod]
+        [Test]
         public void ResourcesReleasabilityTestWith10Changes()
         {
             ResourcesReleasabilityTest(10);
@@ -107,7 +108,7 @@
                 int sqlServiceQueuesCount = sqlConnection.GetServiceQueuesCount();
                 int sqlServicesCount = sqlConnection.GetServicesCount();
 
-                using (var sqlDependency = sqlConnection.GetSqlDependency(TEST_TABLE_NAME))
+                using (var sqlDependency = sqlConnection.GetSqlDependencyEx(TEST_TABLE_NAME))
                 {
                     sqlDependency.Start();
 
@@ -145,7 +146,7 @@
 
                 int changesReceived = 0;
 
-                using (var sqlDependency = sqlConnection.GetSqlDependency(TEST_TABLE_NAME))
+                using (var sqlDependency = sqlConnection.GetSqlDependencyEx(TEST_TABLE_NAME))
                 {
                     sqlDependency.TableChanged += (o, e) => changesReceived++;
                     sqlDependency.Start();

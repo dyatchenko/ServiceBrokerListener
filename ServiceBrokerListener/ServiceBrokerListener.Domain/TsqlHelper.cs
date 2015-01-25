@@ -5,7 +5,7 @@
 
     public static class TsqlHelper
     {
-        public static SqlDependencyEx GetSqlDependency(this SqlConnection connection, string tableName)
+        public static SqlDependencyEx GetSqlDependencyEx(this SqlConnection connection, string tableName)
         {
             return new SqlDependencyEx(connection.ConnectionString, connection.Database, tableName);
         }
