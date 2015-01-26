@@ -18,10 +18,10 @@
         private const string TEST_TABLE_NAME = "TestTable";
 
         private const string MASTER_CONNECTION_STRING =
-            "Data Source=DEVSERVER;Initial Catalog=master;Integrated Security=True";
+            "Data Source=(local);Initial Catalog=master;Integrated Security=True";
 
         private const string TEST_CONNECTION_STRING =
-            "Data Source=DEVSERVER;Initial Catalog=TestDatabase;Integrated Security=True";
+            "Data Source=(local);Initial Catalog=TestDatabase;Integrated Security=True";
 
         private const string INSERT_FORMAT =
             "USE [" + TEST_DATABASE_NAME + "] INSERT INTO [" + TEST_TABLE_NAME + "] VALUES({0})";
@@ -183,7 +183,7 @@
                 // you must subscribe on OnChange again after every event firing.
                 // Thus you may loose many table changes.
                 // In this case we should wait a little bit to give enough time for resubscription.
-                Thread.Sleep(200);
+                Thread.Sleep(500);
             }
         }
     }

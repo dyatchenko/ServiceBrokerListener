@@ -21,10 +21,10 @@
         private const string TEST_TABLE_NAME = "TestTable";
 
         private const string MASTER_CONNECTION_STRING =
-            "Data Source=DEVSERVER;Initial Catalog=master;Integrated Security=True";
+            "Data Source=(local);Initial Catalog=master;Integrated Security=True";
 
         private const string TEST_CONNECTION_STRING =
-            "Data Source=DEVSERVER;Initial Catalog=TestDatabase;Integrated Security=True";
+            "Data Source=(local);Initial Catalog=TestDatabase;Integrated Security=True";
 
         private const string INSERT_FORMAT =
             "USE [" + TEST_DATABASE_NAME + "] INSERT INTO [" + TEST_TABLE_NAME + "] VALUES({0})";
@@ -146,7 +146,7 @@
 
                 int changesReceived = 0;
 
-                using (var sqlDependency = sqlConnection.GetSqlDependencyEx(TEST_TABLE_NAME))
+                using (SqlDependencyEx sqlDependency = sqlConnection.GetSqlDependencyEx(TEST_TABLE_NAME))
                 {
                     sqlDependency.TableChanged += (o, e) => changesReceived++;
                     sqlDependency.Start();
@@ -156,7 +156,7 @@
                     // Wait a little bit to receive all changes.
                     Thread.Sleep(1000);
                 }
-                
+
                 Assert.AreEqual(changesCount, changesReceived);
             }
         }
