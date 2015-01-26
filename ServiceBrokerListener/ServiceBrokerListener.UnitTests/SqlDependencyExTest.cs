@@ -62,6 +62,18 @@
         }
 
         [Test]
+        public void NotificationTestWith10ChangesAnd10SecDelay()
+        {
+            NotificationTest(10, 10);
+        }
+
+        [Test]
+        public void NotificationTestWith10ChangesAnd60SecDelay()
+        {
+            NotificationTest(10, 60);
+        }
+
+        [Test]
         public void NotificationTestWith10Changes()
         {
             NotificationTest(10);
@@ -138,7 +150,7 @@
             }
         }
 
-        private void NotificationTest(int changesCount)
+        private void NotificationTest(int changesCount, int changesDelayInSec = 0)
         {
             using (var sqlConnection = new SqlConnection(TEST_CONNECTION_STRING))
             {
@@ -151,6 +163,7 @@
                     sqlDependency.TableChanged += (o, e) => changesReceived++;
                     sqlDependency.Start();
 
+                    Thread.Sleep(changesDelayInSec * 1000);
                     MakeTableInsertDeleteChanges(changesCount);
 
                     // Wait a little bit to receive all changes.

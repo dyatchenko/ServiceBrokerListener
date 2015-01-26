@@ -263,6 +263,10 @@
             }
         }
 
+        private const int RECEIVE_MESSAGE_QUERY_TIMEOUT = 60000;
+
+        private const int TIMEOUT_EXPIRED_ERROR_CODE = -2146232060;
+
         public string ConnectionString { get; private set; }
 
         public string DatabaseName { get; private set; }
@@ -270,8 +274,6 @@
         public string TableName { get; private set; }
 
         public NotificationTypes NotificaionTypes { get; private set; }
-
-        public int ListenerTimeout { get; private set; }
 
         public SqlDependencyEx(string connectionString, string databaseName, string tableName)
             : this(
@@ -286,14 +288,12 @@
             string connectionString,
             string databaseName,
             string tableName,
-            NotificationTypes listenerType,
-            int listenerTimeout = 60000)
+            NotificationTypes listenerType)
         {
             this.ConnectionString = connectionString;
             this.DatabaseName = databaseName;
             this.TableName = tableName;
             this.NotificaionTypes = listenerType;
-            this.ListenerTimeout = listenerTimeout;
         }
 
         public event EventHandler TableChanged;
@@ -309,8 +309,12 @@
                     {
                         while (true)
                         {
-                            ReceiveEvent();
-                            OnTableChanged();
+                            try
+                            {
+                                ReceiveEvent();
+                                OnTableChanged();
+                            }
+                            catch (SqlException ex) { if (ex.ErrorCode != TIMEOUT_EXPIRED_ERROR_CODE) throw; }
                         }
                     }
                     finally { UninstallNotification(); }
@@ -353,7 +357,7 @@
                     SQL_FORMAT_RECEIVE_EVENT,
                     this.DatabaseName,
                     this.ConversationQueueName,
-                    this.ListenerTimeout),
+                    RECEIVE_MESSAGE_QUERY_TIMEOUT),
                 this.ConnectionString);
         }
 
@@ -451,7 +455,6 @@
             using (SqlCommand command = new SqlCommand(commandText, conn))
             {
                 conn.Open();
-                command.CommandTimeout = this.ListenerTimeout;
                 command.CommandType = CommandType.Text;
                 command.ExecuteNonQuery();
             }
