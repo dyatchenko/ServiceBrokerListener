@@ -12,6 +12,10 @@
     /// TODO: 
     /// 1. Stress test.
     /// 2. Performance test.
+    /// 3. Permissions test.
+    /// 4. Special symbols test.
+    /// 5. Unicode insert test.
+    /// 6. Details test.
     /// </summary>
     [TestFixture]
     public class SqlDependencyExTest

@@ -5,6 +5,7 @@
     using System.Data.SqlClient;
     using System.Text;
     using System.Threading;
+    using System.Xml.Linq;
 
     public sealed class SqlDependencyEx : IDisposable
     {
@@ -12,9 +13,47 @@
         public enum NotificationTypes
         {
             None     = 0,
-            OnInsert = 1 << 1,
-            OnUpdate = 1 << 2,
-            OnDelete = 1 << 3
+            Insert   = 1 << 1,
+            Update   = 1 << 2,
+            Delete   = 1 << 3
+        }
+
+        public class TableChangedEventArgs : EventArgs
+        {
+            private readonly string notificationMessage;
+
+            private const string INSERTED_TAG = "inserted";
+
+            private const string DELETED_TAG = "deleted";
+
+            public TableChangedEventArgs(string notificationMessage)
+            {
+                this.notificationMessage = notificationMessage;
+            }
+
+            public XElement Data
+            {
+                get
+                {
+                    if (string.IsNullOrWhiteSpace(notificationMessage)) return null;
+
+                    return XElement.Parse(notificationMessage);
+                }
+            }
+
+            public NotificationTypes NotificationType
+            {
+                get
+                {
+                    return Data.Element(INSERTED_TAG) != null
+                               ? Data.Element(DELETED_TAG) != null
+                                     ? NotificationTypes.Update
+                                     : NotificationTypes.Insert
+                               : Data.Element(DELETED_TAG) != null
+                                     ? NotificationTypes.Delete
+                                     : NotificationTypes.None;
+                }
+            }
         }
 
         #region Scripts
@@ -25,6 +64,8 @@
         /// {1} - setup procedure name.
         /// {2} - service broker configuration statement.
         /// {3} - notification trigger configuration statement.
+        /// {4} - notification trigger drop statement.
+        /// {5} - table name.
         /// </summary>
         private const string SQL_FORMAT_CREATE_INSTALLATION_PROCEDURE = @"
                 USE [{0}]
@@ -42,8 +83,25 @@
 
                             -- Notification Trigger configuration statement.
                             DECLARE @triggerStatement NVARCHAR(MAX)
-                            SET @triggerStatement = ''{3}''
+                            DECLARE @select NVARCHAR(MAX)
+                            DECLARE @sqlInserted NVARCHAR(MAX)
+                            DECLARE @sqlDeleted NVARCHAR(MAX)
                             
+                            SET @triggerStatement = N''{3}''
+                            
+                            SET @select = STUFF(	(
+						                            SELECT '','' + COLUMN_NAME
+						                            FROM INFORMATION_SCHEMA.COLUMNS
+						                            WHERE TABLE_NAME = ''{5}'' AND TABLE_CATALOG = ''{0}''
+						                            FOR XML PATH ('''')
+						                            ), 1, 1, '''')
+                            SET @sqlInserted = 
+                                N''SET @retvalOUT = (SELECT '' + @select + N'' FROM INSERTED FOR XML PATH(''''''''), ROOT (''''inserted''''))''
+                            SET @sqlDeleted = 
+                                N''SET @retvalOUT = (SELECT '' + @select + N'' FROM DELETED FOR XML PATH(''''''''), ROOT (''''deleted''''))''                            
+                            SET @triggerStatement = REPLACE(@triggerStatement, ''%inserted_select_statement%'', @sqlInserted)
+                            SET @triggerStatement = REPLACE(@triggerStatement, ''%deleted_select_statement%'', @sqlDeleted)
+
                             EXEC sp_executeSql @triggerStatement
                         END
                         ')
@@ -152,6 +210,9 @@
         /// {1} - notification trigger name.
         /// {2} - event data (INSERT, DELETE, UPDATE...).
         /// {3} - conversation service name. 
+        /// {4} - detailed changes tracking mode.
+        /// %inserted_select_statement% - sql code which sets trigger "inserted" value to @retvalOUT variable.
+        /// %deleted_select_statement% - sql code which sets trigger "deleted" value to @retvalOUT variable.
         /// </summary>
         private const string SQL_FORMAT_CREATE_NOTIFICATION_TRIGGER = @"
                 CREATE TRIGGER [{1}]
@@ -164,13 +225,36 @@
                 --Trigger {0} is rising...
                 IF EXISTS (SELECT * FROM sys.services WHERE name = '{3}')
                 BEGIN
+                    DECLARE @message VARCHAR(MAX)
+                    SET @message = '<root/>'
+
+                    IF ({4} EXISTS(SELECT 1))
+                    BEGIN
+                        DECLARE @retvalOUT NVARCHAR(MAX)
+
+                        %inserted_select_statement%
+
+                        IF (@retvalOUT IS NOT NULL)
+                        BEGIN SET @message = N'<root>' + @retvalOUT END                        
+
+                        %deleted_select_statement%
+
+                        IF (@retvalOUT IS NOT NULL)
+                        BEGIN
+                            IF (@message = '<root/>') BEGIN SET @message = N'<root>' + @retvalOUT END
+                            ELSE BEGIN SET @message = @message + @retvalOUT END
+                        END 
+
+                        IF (@message != '<root/>') BEGIN SET @message = @message + N'</root>' END
+                    END
+
                 	--Beginning of dialog...
                 	DECLARE @ConvHandle UNIQUEIDENTIFIER
                 	--Determine the Initiator Service, Target Service and the Contract 
                 	BEGIN DIALOG @ConvHandle 
                         FROM SERVICE [{3}] TO SERVICE '{3}' ON CONTRACT [DEFAULT] WITH ENCRYPTION=OFF; 
 	                --Send the Message
-	                SEND ON CONVERSATION @ConvHandle MESSAGE TYPE [DEFAULT];
+	                SEND ON CONVERSATION @ConvHandle MESSAGE TYPE [DEFAULT] (@message);
 	                --End conversation
 	                END CONVERSATION @ConvHandle WITH CLEANUP;
                 END
@@ -184,11 +268,14 @@
         /// </summary>
         private const string SQL_FORMAT_RECEIVE_EVENT = @"
                 DECLARE @ConvHandle UNIQUEIDENTIFIER
+                DECLARE @message VARBINARY(MAX)
                 USE [{0}]
-                WAITFOR (RECEIVE TOP(1) @ConvHandle=Conversation_Handle FROM dbo.[{1}]), TIMEOUT {2};
+                WAITFOR (RECEIVE TOP(1) @ConvHandle=Conversation_Handle, @message=message_body FROM dbo.[{1}]), TIMEOUT {2};
                 BEGIN TRY
 	                END CONVERSATION @ConvHandle WITH CLEANUP;
                 END TRY BEGIN CATCH END CATCH
+
+                SELECT CAST(@message AS VARCHAR(MAX)) 
             ";
 
         /// <summary>
@@ -214,6 +301,8 @@
             ";
 
         #endregion
+
+        private const int COMMAND_TIMEOUT = 60000;
 
         private readonly Guid uniqueNameIdentifier = Guid.NewGuid();
 
@@ -263,10 +352,6 @@
             }
         }
 
-        private const int RECEIVE_MESSAGE_QUERY_TIMEOUT = 60000;
-
-        private const int TIMEOUT_EXPIRED_ERROR_CODE = -2146232060;
-
         public string ConnectionString { get; private set; }
 
         public string DatabaseName { get; private set; }
@@ -275,12 +360,14 @@
 
         public NotificationTypes NotificaionTypes { get; private set; }
 
+        public bool DetailsIncluded { get; private set; }
+
         public SqlDependencyEx(string connectionString, string databaseName, string tableName)
             : this(
                 connectionString,
                 databaseName,
                 tableName,
-                NotificationTypes.OnInsert | NotificationTypes.OnUpdate | NotificationTypes.OnDelete)
+                NotificationTypes.Insert | NotificationTypes.Update | NotificationTypes.Delete)
         {
         }
 
@@ -288,15 +375,17 @@
             string connectionString,
             string databaseName,
             string tableName,
-            NotificationTypes listenerType)
+            NotificationTypes listenerType,
+            bool receiveDetails = true)
         {
             this.ConnectionString = connectionString;
             this.DatabaseName = databaseName;
             this.TableName = tableName;
             this.NotificaionTypes = listenerType;
+            this.DetailsIncluded = receiveDetails;
         }
 
-        public event EventHandler TableChanged;
+        public event EventHandler<TableChangedEventArgs> TableChanged;
 
         public void Start()
         {
@@ -309,12 +398,9 @@
                     {
                         while (true)
                         {
-                            try
-                            {
-                                ReceiveEvent();
-                                OnTableChanged();
-                            }
-                            catch (SqlException ex) { if (ex.ErrorCode != TIMEOUT_EXPIRED_ERROR_CODE) throw; }
+                            string message = ReceiveEvent();
+                            if (!string.IsNullOrWhiteSpace(message))
+                                OnTableChanged(message);
                         }
                     }
                     finally { UninstallNotification(); }
@@ -350,15 +436,27 @@
             Stop();
         }
 
-        private void ReceiveEvent()
+        private string ReceiveEvent()
         {
-            ExecuteNonQuery(
-                string.Format(
-                    SQL_FORMAT_RECEIVE_EVENT,
-                    this.DatabaseName,
-                    this.ConversationQueueName,
-                    RECEIVE_MESSAGE_QUERY_TIMEOUT),
-                this.ConnectionString);
+            var commandText = string.Format(
+                SQL_FORMAT_RECEIVE_EVENT,
+                this.DatabaseName,
+                this.ConversationQueueName,
+                COMMAND_TIMEOUT / 2);
+
+            using (SqlConnection conn = new SqlConnection(this.ConnectionString))
+            using (SqlCommand command = new SqlCommand(commandText, conn))
+            {
+                conn.Open();
+                command.CommandType = CommandType.Text;
+                command.CommandTimeout = COMMAND_TIMEOUT;
+                using (var reader = command.ExecuteReader())
+                {
+                    if (!reader.Read() || reader.IsDBNull(0)) return string.Empty;
+
+                    return reader.GetString(0);
+                }
+            }
         }
 
         private string GetUninstallNotificationProcedureScript()
@@ -387,12 +485,14 @@
                 this.DatabaseName,
                 this.ConversationQueueName,
                 this.ConversationServiceName);
-            string installNotificationTriggerScript = string.Format(
-                SQL_FORMAT_CREATE_NOTIFICATION_TRIGGER,
-                this.TableName,
-                this.ConversationTriggerName,
-                GetTriggerTypeByListenerType(),
-                this.ConversationServiceName);
+            string installNotificationTriggerScript =
+                string.Format(
+                    SQL_FORMAT_CREATE_NOTIFICATION_TRIGGER,
+                    this.TableName,
+                    this.ConversationTriggerName,
+                    GetTriggerTypeByListenerType(),
+                    this.ConversationServiceName,
+                    this.DetailsIncluded ? string.Empty : @"NOT");
             string uninstallNotificationTriggerScript = string.Format(
                 SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER,
                 this.ConversationTriggerName);
@@ -403,16 +503,17 @@
                     this.InstallListenerProcedureName,
                     installServiceBrokerNotificationScript.Replace("'", "''"),
                     installNotificationTriggerScript.Replace("'", "''''"),
-                    uninstallNotificationTriggerScript.Replace("'", "''"));
+                    uninstallNotificationTriggerScript.Replace("'", "''"),
+                    this.TableName);
             return installationProcedureScript;
         }
 
         private string GetTriggerTypeByListenerType()
         {
             StringBuilder result = new StringBuilder();
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.OnInsert)) result.Append("INSERT");
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.OnUpdate)) result.Append(result.Length == 0 ? "UPDATE" : ", UPDATE");
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.OnDelete)) result.Append(result.Length == 0 ? "DELETE" : ", DELETE");
+            if (this.NotificaionTypes.HasFlag(NotificationTypes.Insert)) result.Append("INSERT");
+            if (this.NotificaionTypes.HasFlag(NotificationTypes.Update)) result.Append(result.Length == 0 ? "UPDATE" : ", UPDATE");
+            if (this.NotificaionTypes.HasFlag(NotificationTypes.Delete)) result.Append(result.Length == 0 ? "DELETE" : ", DELETE");
             if (result.Length == 0) result.Append("INSERT");
 
             return result.ToString();
@@ -460,12 +561,12 @@
             }
         }
 
-        private void OnTableChanged()
+        private void OnTableChanged(string message)
         {
             var evnt = this.TableChanged;
             if (evnt == null) return;
 
-            evnt.Invoke(this, EventArgs.Empty);
+            evnt.Invoke(this, new TableChangedEventArgs(message));
         }
     }
 }
