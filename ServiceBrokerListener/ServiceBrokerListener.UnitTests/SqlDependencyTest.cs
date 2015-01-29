@@ -17,6 +17,8 @@
 
         private const string TEST_TABLE_NAME = "TestTable";
 
+        private const string TEST_TABLE_NAME_2 = "TestTable2";
+
         private const string MASTER_CONNECTION_STRING =
             "Data Source=(local);Initial Catalog=master;Integrated Security=True";
 
@@ -24,7 +26,7 @@
             "Data Source=(local);Initial Catalog=TestDatabase;Integrated Security=True";
 
         private const string INSERT_FORMAT =
-            "USE [" + TEST_DATABASE_NAME + "] INSERT INTO [" + TEST_TABLE_NAME + "] VALUES({0})";
+            "USE [" + TEST_DATABASE_NAME + "] INSERT INTO [{1}] VALUES({0})";
 
         [TestInitialize]
         public void TestSetup()
@@ -34,6 +36,7 @@
             const string CreateTableScript = @"                
                 USE [" + TEST_DATABASE_NAME + @"]
                 CREATE TABLE " + TEST_TABLE_NAME + @" (TestField int)   
+                CREATE TABLE " + TEST_TABLE_NAME_2 + @" (TestField int)   
                 ALTER DATABASE [" + TEST_DATABASE_NAME + @"] SET ENABLE_BROKER;   
                 ALTER AUTHORIZATION ON DATABASE::[" + TEST_DATABASE_NAME + @"] TO [sa]
                 ALTER DATABASE [" + TEST_DATABASE_NAME + @"] SET TRUSTWORTHY ON;    
@@ -91,6 +94,70 @@
         public void ResourcesReleasabilityTestWith10Changes_PROOF_OF_FAIL()
         {
             ResourcesReleasabilityTest(1);
+        }
+
+        [TestMethod]
+        public void TwoTablesNotificationTest()
+        {
+            const int ChangesCountFirstTable = 5;
+            const int ChangesCountSecondTable = 7;
+
+            int changesReceived1 = 0;
+            int changesReceived2 = 0;
+
+            OnChangeEventHandler onChange1 = null;
+            onChange1 = (s, e) =>
+                {
+                    if (e != null && e.Info == SqlNotificationInfo.Insert) changesReceived1++;
+
+                    using (SqlConnection connection = new SqlConnection(TEST_CONNECTION_STRING))
+                    using (var command1 = new SqlCommand("SELECT TestField FROM dbo.TestTable", connection))
+                    {
+                        connection.Open();
+
+                        SqlDependency dep = (SqlDependency)s;
+                        if (dep != null) dep.OnChange -= onChange1;
+                        command1.Notification = null;
+                        dep = new SqlDependency(command1);
+                        dep.OnChange += onChange1;
+                        command1.ExecuteReader().Close();
+                    }
+                };
+
+            OnChangeEventHandler onChange2 = null;
+            onChange2 = (s, e) =>
+            {
+                if (e != null && e.Info == SqlNotificationInfo.Insert) changesReceived2++;
+
+                using (SqlConnection connection = new SqlConnection(TEST_CONNECTION_STRING))
+                using (SqlCommand command2 = new SqlCommand("SELECT TestField FROM dbo.TestTable2", connection))
+                {
+                    connection.Open();
+
+                    SqlDependency dep = (SqlDependency)s;
+                    if (dep != null) dep.OnChange -= onChange2;
+                    command2.Notification = null;
+                    dep = new SqlDependency(command2);
+                    dep.OnChange += onChange2;
+                    command2.ExecuteReader().Close();
+                }
+            };
+
+            SqlDependency.Start(TEST_CONNECTION_STRING);
+
+            onChange1(null, null);
+
+            SqlDependency.Start(TEST_CONNECTION_STRING);
+
+            onChange2(null, null);
+
+            MakeTableInsertChange(ChangesCountFirstTable);
+            MakeTableInsertChange(ChangesCountSecondTable, TEST_TABLE_NAME_2);
+
+            Assert.AreEqual(ChangesCountFirstTable, changesReceived1);
+            Assert.AreEqual(ChangesCountSecondTable, changesReceived2);
+
+            SqlDependency.Stop(TEST_CONNECTION_STRING);
         }
 
         public void ResourcesReleasabilityTest(int changesCount)
@@ -174,11 +241,11 @@
             }
         }
 
-        private static void MakeTableInsertChange(int changesCount)
+        private static void MakeTableInsertChange(int changesCount, string tableName = TEST_TABLE_NAME)
         {
             for (int i = 0; i < changesCount; i++)
             {
-                ExecuteNonQuery(string.Format(INSERT_FORMAT, i), TEST_CONNECTION_STRING);
+                ExecuteNonQuery(string.Format(INSERT_FORMAT, i, tableName), TEST_CONNECTION_STRING);
                 // It is one of weaknesses of Microsoft SqlDependency:
                 // you must subscribe on OnChange again after every event firing.
                 // Thus you may loose many table changes.
