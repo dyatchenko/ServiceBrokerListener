@@ -10,6 +10,20 @@
             return new SqlDependencyEx(connection.ConnectionString, connection.Database, tableName);
         }
 
+        public static int GetTriggersCount(this SqlConnection connection)
+        {
+            const string CommandText = "SELECT COUNT(*) FROM sys.objects WHERE [type] = 'TR'";
+
+            return GetIntValueFromCommand(connection, CommandText);
+        }
+
+        public static int GetProceduresCount(this SqlConnection connection)
+        {
+            const string CommandText = "SELECT COUNT(*) FROM sys.objects WHERE [type] = 'P'";
+
+            return GetIntValueFromCommand(connection, CommandText);
+        }
+
         public static int GetConversationEndpointsCount(this SqlConnection connection)
         {
             const string CommandText = "SELECT COUNT(*) FROM sys.conversation_endpoints";

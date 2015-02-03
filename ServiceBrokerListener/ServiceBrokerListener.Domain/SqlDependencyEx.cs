@@ -66,13 +66,14 @@
         /// {3} - notification trigger configuration statement.
         /// {4} - notification trigger drop statement.
         /// {5} - table name.
+        /// {6} - schema name.
         /// </summary>
         private const string SQL_FORMAT_CREATE_INSTALLATION_PROCEDURE = @"
                 USE [{0}]
-                IF OBJECT_ID ('{1}', 'P') IS NULL
+                IF OBJECT_ID ('{6}.{1}', 'P') IS NULL
                 BEGIN
                     EXEC ('
-                        CREATE PROCEDURE {1}
+                        CREATE PROCEDURE {6}.{1}
                         AS
                         BEGIN
                             -- Service Broker configuration statement.
@@ -89,18 +90,23 @@
                             
                             SET @triggerStatement = N''{3}''
                             
-                            SET @select = STUFF(	(
-						                            SELECT '','' + COLUMN_NAME
-						                            FROM INFORMATION_SCHEMA.COLUMNS
-						                            WHERE TABLE_NAME = ''{5}'' AND TABLE_CATALOG = ''{0}''
-						                            FOR XML PATH ('''')
-						                            ), 1, 1, '''')
+                            SET @select = STUFF((SELECT '','' + COLUMN_NAME
+						                         FROM INFORMATION_SCHEMA.COLUMNS
+						                         WHERE TABLE_NAME = ''{5}'' AND TABLE_CATALOG = ''{0}''
+						                         FOR XML PATH ('''')
+						                         ), 1, 1, '''')
                             SET @sqlInserted = 
-                                N''SET @retvalOUT = (SELECT '' + @select + N'' FROM INSERTED FOR XML PATH(''''''''), ROOT (''''inserted''''))''
+                                N''SET @retvalOUT = (SELECT '' + @select + N'' 
+                                                     FROM INSERTED 
+                                                     FOR XML PATH(''''row''''), ROOT (''''inserted''''))''
                             SET @sqlDeleted = 
-                                N''SET @retvalOUT = (SELECT '' + @select + N'' FROM DELETED FOR XML PATH(''''''''), ROOT (''''deleted''''))''                            
-                            SET @triggerStatement = REPLACE(@triggerStatement, ''%inserted_select_statement%'', @sqlInserted)
-                            SET @triggerStatement = REPLACE(@triggerStatement, ''%deleted_select_statement%'', @sqlDeleted)
+                                N''SET @retvalOUT = (SELECT '' + @select + N'' 
+                                                     FROM DELETED 
+                                                     FOR XML PATH(''''row''''), ROOT (''''deleted''''))''                            
+                            SET @triggerStatement = REPLACE(@triggerStatement
+                                                     , ''%inserted_select_statement%'', @sqlInserted)
+                            SET @triggerStatement = REPLACE(@triggerStatement
+                                                     , ''%deleted_select_statement%'', @sqlDeleted)
 
                             EXEC sp_executeSql @triggerStatement
                         END
@@ -114,13 +120,14 @@
         /// {1} - uninstall procedure name.
         /// {2} - notification trigger drop statement.
         /// {3} - service broker uninstall statement.
+        /// {4} - schema name.
         /// </summary>
         private const string SQL_FORMAT_CREATE_UNINSTALLATION_PROCEDURE = @"
                 USE [{0}]
-                IF OBJECT_ID ('{1}', 'P') IS NULL
+                IF OBJECT_ID ('{4}.{1}', 'P') IS NULL
                 BEGIN
                     EXEC ('
-                        CREATE PROCEDURE {1}
+                        CREATE PROCEDURE {4}.{1}
                         AS
                         BEGIN
                             -- Notification Trigger drop statement.
@@ -138,32 +145,26 @@
         /// {0} - database name;
         /// {1} - conversation queue name.
         /// {2} - conversation service name.
+        /// {3} - schema name.
         /// </summary>
         private const string SQL_FORMAT_INSTALL_SEVICE_BROKER_NOTIFICATION = @"
                 -- Setup Service Broker
                 IF EXISTS (SELECT * FROM sys.databases WHERE name = '{0}' AND is_broker_enabled = 0) 
-                BEGIN
-                     --ALTER DATABASE [{0}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE
                      ALTER DATABASE [{0}] SET ENABLE_BROKER; 
-                     --ALTER DATABASE [{0}] SET MULTI_USER WITH ROLLBACK IMMEDIATE
-                END
-                
-                -- Setup authorization
-                --ALTER AUTHORIZATION ON DATABASE::[{0}] TO [sa]
-                --ALTER DATABASE [{0}] SET TRUSTWORTHY ON;
                 
                 -- Create a queue which will hold the tracked information 
                 IF NOT EXISTS (SELECT * FROM sys.service_queues WHERE name = '{1}')
-	                CREATE QUEUE dbo.[{1}]
+	                CREATE QUEUE {3}.[{1}]
                 -- Create a service on which tracked information will be sent 
                 IF NOT EXISTS(SELECT * FROM sys.services WHERE name = '{2}')
-	                CREATE SERVICE [{2}] ON QUEUE dbo.[{1}] ([DEFAULT]) 
+	                CREATE SERVICE [{2}] ON QUEUE {3}.[{1}] ([DEFAULT]) 
             ";
 
         /// <summary>
         /// T-SQL script-template which removes database notification.
         /// {0} - conversation queue name.
         /// {1} - conversation service name.
+        /// {2} - schema name.
         /// </summary>
         private const string SQL_FORMAT_UNINSTALL_SERVICE_BROKER_NOTIFICATION = @"
                 BEGIN TRY
@@ -189,8 +190,8 @@
 
                     -- Droping service and queue.
                     DROP SERVICE [{1}];
-                    IF OBJECT_ID ('{0}', 'SQ') IS NOT NULL
-	                    DROP QUEUE [{0}];
+                    IF OBJECT_ID ('{2}.{0}', 'SQ') IS NOT NULL
+	                    DROP QUEUE {2}.[{0}];
                 END TRY
                 BEGIN CATCH END CATCH
             ";
@@ -198,10 +199,11 @@
         /// <summary>
         /// T-SQL script-template which creates notification trigger.
         /// {0} - notification trigger name. 
+        /// {1} - schema name.
         /// </summary>
         private const string SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER = @"
-                IF OBJECT_ID ('{0}', 'TR') IS NOT NULL
-                    DROP TRIGGER [{0}];
+                IF OBJECT_ID ('{1}.{0}', 'TR') IS NOT NULL
+                    DROP TRIGGER {1}.[{0}];
             ";
 
         /// <summary>
@@ -211,12 +213,13 @@
         /// {2} - event data (INSERT, DELETE, UPDATE...).
         /// {3} - conversation service name. 
         /// {4} - detailed changes tracking mode.
+        /// {5} - schema name.
         /// %inserted_select_statement% - sql code which sets trigger "inserted" value to @retvalOUT variable.
         /// %deleted_select_statement% - sql code which sets trigger "deleted" value to @retvalOUT variable.
         /// </summary>
         private const string SQL_FORMAT_CREATE_NOTIFICATION_TRIGGER = @"
                 CREATE TRIGGER [{1}]
-                ON dbo.[{0}]
+                ON {5}.[{0}]
                 AFTER {2} 
                 AS
 
@@ -225,8 +228,8 @@
                 --Trigger {0} is rising...
                 IF EXISTS (SELECT * FROM sys.services WHERE name = '{3}')
                 BEGIN
-                    DECLARE @message VARCHAR(MAX)
-                    SET @message = '<root/>'
+                    DECLARE @message NVARCHAR(MAX)
+                    SET @message = N'<root/>'
 
                     IF ({4} EXISTS(SELECT 1))
                     BEGIN
@@ -241,11 +244,11 @@
 
                         IF (@retvalOUT IS NOT NULL)
                         BEGIN
-                            IF (@message = '<root/>') BEGIN SET @message = N'<root>' + @retvalOUT END
+                            IF (@message = N'<root/>') BEGIN SET @message = N'<root>' + @retvalOUT END
                             ELSE BEGIN SET @message = @message + @retvalOUT END
                         END 
 
-                        IF (@message != '<root/>') BEGIN SET @message = @message + N'</root>' END
+                        IF (@message != N'<root/>') BEGIN SET @message = @message + N'</root>' END
                     END
 
                 	--Beginning of dialog...
@@ -265,39 +268,43 @@
         /// {0} - database name.
         /// {1} - conversation queue name.
         /// {2} - timeout.
+        /// {3} - schema name.
         /// </summary>
         private const string SQL_FORMAT_RECEIVE_EVENT = @"
                 DECLARE @ConvHandle UNIQUEIDENTIFIER
                 DECLARE @message VARBINARY(MAX)
                 USE [{0}]
-                WAITFOR (RECEIVE TOP(1) @ConvHandle=Conversation_Handle, @message=message_body FROM dbo.[{1}]), TIMEOUT {2};
+                WAITFOR (RECEIVE TOP(1) @ConvHandle=Conversation_Handle
+                            , @message=message_body FROM {3}.[{1}]), TIMEOUT {2};
                 BEGIN TRY
 	                END CONVERSATION @ConvHandle WITH CLEANUP;
                 END TRY BEGIN CATCH END CATCH
 
-                SELECT CAST(@message AS VARCHAR(MAX)) 
+                SELECT CAST(@message AS NVARCHAR(MAX)) 
             ";
 
         /// <summary>
         /// T-SQL script-template which executes stored procedure.
         /// {0} - database name.
         /// {1} - procedure name.
+        /// {2} - schema name.
         /// </summary>
         private const string SQL_FORMAT_EXECUTE_PROCEDURE = @"
                 USE [{0}]
-                IF OBJECT_ID ('{1}', 'P') IS NOT NULL
-                    EXEC {1}
+                IF OBJECT_ID ('{2}.{1}', 'P') IS NOT NULL
+                    EXEC {2}.{1}
             ";
 
         /// <summary>
         /// T-SQL script-template which deletes stored procedure.
         /// {0} - database name.
         /// {1} - stored procedure name.
+        /// {2} - schema name.
         /// </summary>
         private const string SQL_FORMAT_DROP_PROCEDURE = @"
                 USE [{0}]
-                IF OBJECT_ID ('{1}', 'P') IS NOT NULL
-                    DROP PROCEDURE [{1}]
+                IF OBJECT_ID ('{2}.{1}', 'P') IS NOT NULL
+                    DROP PROCEDURE temp.[{1}]
             ";
 
         #endregion
@@ -328,7 +335,7 @@
         {
             get
             {
-                return string.Format("ListenerTrigger-{0}", this.uniqueNameIdentifier);
+                return string.Format("tr_Listener_{0}", this.uniqueNameIdentifier.ToString("N"));
             }
         }
 
@@ -358,29 +365,25 @@
 
         public string TableName { get; private set; }
 
+        public string SchemaName { get; private set; }
+
         public NotificationTypes NotificaionTypes { get; private set; }
 
         public bool DetailsIncluded { get; private set; }
-
-        public SqlDependencyEx(string connectionString, string databaseName, string tableName)
-            : this(
-                connectionString,
-                databaseName,
-                tableName,
-                NotificationTypes.Insert | NotificationTypes.Update | NotificationTypes.Delete)
-        {
-        }
 
         public SqlDependencyEx(
             string connectionString,
             string databaseName,
             string tableName,
-            NotificationTypes listenerType,
+            string schemaName = "dbo",
+            NotificationTypes listenerType =
+                NotificationTypes.Insert | NotificationTypes.Update | NotificationTypes.Delete,
             bool receiveDetails = true)
         {
             this.ConnectionString = connectionString;
             this.DatabaseName = databaseName;
             this.TableName = tableName;
+            this.SchemaName = schemaName;
             this.NotificaionTypes = listenerType;
             this.DetailsIncluded = receiveDetails;
         }
@@ -442,7 +445,8 @@
                 SQL_FORMAT_RECEIVE_EVENT,
                 this.DatabaseName,
                 this.ConversationQueueName,
-                COMMAND_TIMEOUT / 2);
+                COMMAND_TIMEOUT / 2,
+                this.SchemaName);
 
             using (SqlConnection conn = new SqlConnection(this.ConnectionString))
             using (SqlCommand command = new SqlCommand(commandText, conn))
@@ -464,17 +468,20 @@
             string uninstallServiceBrokerNotificationScript = string.Format(
                 SQL_FORMAT_UNINSTALL_SERVICE_BROKER_NOTIFICATION,
                 this.ConversationQueueName,
-                this.ConversationServiceName);
+                this.ConversationServiceName,
+                this.SchemaName);
             string uninstallNotificationTriggerScript = string.Format(
                 SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER,
-                this.ConversationTriggerName);
+                this.ConversationTriggerName,
+                this.SchemaName);
             string uninstallationProcedureScript =
                 string.Format(
                     SQL_FORMAT_CREATE_UNINSTALLATION_PROCEDURE,
                     this.DatabaseName,
                     this.UninstallListenerProcedureName,
                     uninstallServiceBrokerNotificationScript.Replace("'", "''"),
-                    uninstallNotificationTriggerScript.Replace("'", "''"));
+                    uninstallNotificationTriggerScript.Replace("'", "''"),
+                    this.SchemaName);
             return uninstallationProcedureScript;
         }
 
@@ -484,7 +491,8 @@
                 SQL_FORMAT_INSTALL_SEVICE_BROKER_NOTIFICATION,
                 this.DatabaseName,
                 this.ConversationQueueName,
-                this.ConversationServiceName);
+                this.ConversationServiceName,
+                this.SchemaName);
             string installNotificationTriggerScript =
                 string.Format(
                     SQL_FORMAT_CREATE_NOTIFICATION_TRIGGER,
@@ -492,10 +500,13 @@
                     this.ConversationTriggerName,
                     GetTriggerTypeByListenerType(),
                     this.ConversationServiceName,
-                    this.DetailsIncluded ? string.Empty : @"NOT");
-            string uninstallNotificationTriggerScript = string.Format(
-                SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER,
-                this.ConversationTriggerName);
+                    this.DetailsIncluded ? string.Empty : @"NOT",
+                    this.SchemaName);
+            string uninstallNotificationTriggerScript =
+                string.Format(
+                    SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER,
+                    this.ConversationTriggerName,
+                    this.SchemaName);
             string installationProcedureScript =
                 string.Format(
                     SQL_FORMAT_CREATE_INSTALLATION_PROCEDURE,
@@ -504,16 +515,20 @@
                     installServiceBrokerNotificationScript.Replace("'", "''"),
                     installNotificationTriggerScript.Replace("'", "''''"),
                     uninstallNotificationTriggerScript.Replace("'", "''"),
-                    this.TableName);
+                    this.TableName,
+                    this.SchemaName);
             return installationProcedureScript;
         }
 
         private string GetTriggerTypeByListenerType()
         {
             StringBuilder result = new StringBuilder();
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.Insert)) result.Append("INSERT");
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.Update)) result.Append(result.Length == 0 ? "UPDATE" : ", UPDATE");
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.Delete)) result.Append(result.Length == 0 ? "DELETE" : ", DELETE");
+            if (this.NotificaionTypes.HasFlag(NotificationTypes.Insert)) 
+                result.Append("INSERT");
+            if (this.NotificaionTypes.HasFlag(NotificationTypes.Update)) 
+                result.Append(result.Length == 0 ? "UPDATE" : ", UPDATE");
+            if (this.NotificaionTypes.HasFlag(NotificationTypes.Delete)) 
+                result.Append(result.Length == 0 ? "DELETE" : ", DELETE");
             if (result.Length == 0) result.Append("INSERT");
 
             return result.ToString();
@@ -524,17 +539,20 @@
             string execUninstallationProcedureScript = string.Format(
                 SQL_FORMAT_EXECUTE_PROCEDURE,
                 this.DatabaseName,
-                this.UninstallListenerProcedureName);
+                this.UninstallListenerProcedureName,
+                this.SchemaName);
             string dropUsedProcedures = string.Format(
                 "{0}\r\n{1}",
                 string.Format(
                     SQL_FORMAT_DROP_PROCEDURE,
                     this.DatabaseName,
-                    this.InstallListenerProcedureName),
+                    this.InstallListenerProcedureName,
+                    this.SchemaName),
                 string.Format(
                     SQL_FORMAT_DROP_PROCEDURE,
                     this.DatabaseName,
-                    this.UninstallListenerProcedureName));
+                    this.UninstallListenerProcedureName,
+                    this.SchemaName));
             ExecuteNonQuery(execUninstallationProcedureScript, this.ConnectionString);
             ExecuteNonQuery(dropUsedProcedures, this.ConnectionString);
         }
@@ -544,7 +562,8 @@
             string execInstallationProcedureScript = string.Format(
                 SQL_FORMAT_EXECUTE_PROCEDURE,
                 this.DatabaseName,
-                this.InstallListenerProcedureName);
+                this.InstallListenerProcedureName,
+                this.SchemaName);
             ExecuteNonQuery(GetInstallNotificationProcedureScript(), this.ConnectionString);
             ExecuteNonQuery(GetUninstallNotificationProcedureScript(), this.ConnectionString);
             ExecuteNonQuery(execInstallationProcedureScript, this.ConnectionString);
