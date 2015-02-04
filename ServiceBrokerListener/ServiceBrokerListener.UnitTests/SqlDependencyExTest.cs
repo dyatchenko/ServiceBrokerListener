@@ -13,6 +13,7 @@
     /// <summary>
     /// TODO: 
     /// 1. Performance test.
+    /// 2. Check strange behavior.
     /// </summary>
     [TestFixture]
     public class SqlDependencyExTest
@@ -40,7 +41,15 @@
         public void TestSetup()
         {
             const string CreateDatabaseScript = @"
-                CREATE DATABASE TestDatabase;";
+                CREATE DATABASE TestDatabase;
+
+                ALTER DATABASE [TestDatabase] SET SINGLE_USER WITH ROLLBACK IMMEDIATE
+                ALTER DATABASE [TestDatabase] SET ENABLE_BROKER; 
+                ALTER DATABASE [TestDatabase] SET MULTI_USER WITH ROLLBACK IMMEDIATE
+
+                -- FOR SQL Express
+                ALTER AUTHORIZATION ON DATABASE::[TestDatabase] TO [sa]
+                ALTER DATABASE [TestDatabase] SET TRUSTWORTHY ON; ";
             const string CreateUserScript = @"
                 CREATE LOGIN TempLogin 
                 WITH PASSWORD = '8fdKJl3$nlNv3049jsKK', DEFAULT_DATABASE=TestDatabase;
@@ -53,7 +62,7 @@
                 GRANT CREATE QUEUE  TO [TempUser];
                 GRANT REFERENCES ON CONTRACT::[DEFAULT] TO [TempUser]
                 GRANT SUBSCRIBE QUERY NOTIFICATIONS TO [TempUser];
-                GRANT CONTROL ON SCHEMA::[temp] TO [TempUser];
+                GRANT CONTROL ON SCHEMA::[temp] TO [TempUser];  
                 ";
             const string CreateTableScript = @"                
                 CREATE SCHEMA Temp
@@ -158,6 +167,69 @@
             DetailsTest(100000);
         }
 
+        [Test]
+        public void MainPermissionExceptionCheckTest()
+        {
+            ExecuteNonQuery("USE [TestDatabase] DENY CREATE PROCEDURE TO [TempUser];", MASTER_CONNECTION_STRING);
+            bool errorReceived = false;
+            try
+            {
+                using (SqlDependencyEx test = new SqlDependencyEx(
+                        TEST_CONNECTION_STRING,
+                        TEST_DATABASE_NAME,
+                        TEST_TABLE_NAME,
+                        "temp")) test.Start();
+            }
+            catch (SqlException) { errorReceived = true; }
+
+            Assert.AreEqual(true, errorReceived);
+
+            ExecuteNonQuery("USE [TestDatabase] GRANT CREATE PROCEDURE TO [TempUser];", MASTER_CONNECTION_STRING);
+            errorReceived = false;
+            try
+            {
+                using (SqlDependencyEx test = new SqlDependencyEx(
+                        TEST_CONNECTION_STRING,
+                        TEST_DATABASE_NAME,
+                        TEST_TABLE_NAME,
+                        "temp")) test.Start();
+            }
+            catch (SqlException) { errorReceived = true; }
+
+            Assert.AreEqual(false, errorReceived);
+
+            using (SqlDependencyEx test = new SqlDependencyEx(
+                    MASTER_CONNECTION_STRING,
+                    TEST_DATABASE_NAME,
+                    TEST_TABLE_NAME,
+                    "temp")) test.Start();
+        }
+
+        [Test]
+        public void AdminPermissionExceptionCheckTest()
+        {
+            const string ScriptDisableBroker = @"
+                ALTER DATABASE [TestDatabase] SET SINGLE_USER WITH ROLLBACK IMMEDIATE
+                ALTER DATABASE [TestDatabase] SET DISABLE_BROKER; 
+                ALTER DATABASE [TestDatabase] SET MULTI_USER WITH ROLLBACK IMMEDIATE";
+
+            ExecuteNonQuery(ScriptDisableBroker, MASTER_CONNECTION_STRING);
+            bool errorReceived = false;
+            try
+            {
+                using (SqlDependencyEx test = new SqlDependencyEx(
+                        TEST_CONNECTION_STRING,
+                        TEST_DATABASE_NAME,
+                        TEST_TABLE_NAME,
+                        "temp")) test.Start();
+            }
+            catch (SqlException) { errorReceived = true; }
+
+            Assert.AreEqual(true, errorReceived);
+
+            NotificationTest(10, connStr: ADMIN_TEST_CONNECTION_STRING);
+        }
+
         public void ResourcesReleasabilityTest(int changesCount)
         {
             using (var sqlConnection = new SqlConnection(TEST_CONNECTION_STRING))
@@ -208,12 +280,15 @@
             }
         }
 
-        private void NotificationTest(int changesCount, int changesDelayInSec = 0)
+        private void NotificationTest(
+            int changesCount,
+            int changesDelayInSec = 0,
+            string connStr = TEST_CONNECTION_STRING)
         {
             int changesReceived = 0;
 
             using (SqlDependencyEx sqlDependency = new SqlDependencyEx(
-                        TEST_CONNECTION_STRING,
+                        connStr,
                         TEST_DATABASE_NAME,
                         TEST_TABLE_NAME, "temp")) 
             {
@@ -295,8 +370,8 @@
         {
             for (int i = 0; i < changesCount / 2; i++)
             {
-                ExecuteNonQuery(string.Format(INSERT_FORMAT, i), TEST_CONNECTION_STRING);
-                ExecuteNonQuery(string.Format(REMOVE_FORMAT, i), TEST_CONNECTION_STRING);
+                ExecuteNonQuery(string.Format(INSERT_FORMAT, i), MASTER_CONNECTION_STRING);
+                ExecuteNonQuery(string.Format(REMOVE_FORMAT, i), MASTER_CONNECTION_STRING);
             }
         }
 
