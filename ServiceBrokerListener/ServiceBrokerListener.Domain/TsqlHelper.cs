@@ -5,11 +5,6 @@
 
     public static class TsqlHelper
     {
-        public static SqlDependencyEx GetSqlDependencyEx(this SqlConnection connection, string tableName)
-        {
-            return new SqlDependencyEx(connection.ConnectionString, connection.Database, tableName);
-        }
-
         public static int GetTriggersCount(this SqlConnection connection)
         {
             const string CommandText = "SELECT COUNT(*) FROM sys.objects WHERE [type] = 'TR'";
