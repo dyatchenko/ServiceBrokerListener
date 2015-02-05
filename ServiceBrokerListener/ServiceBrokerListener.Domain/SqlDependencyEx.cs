@@ -346,7 +346,7 @@
         private const string SQL_FORMAT_DROP_PROCEDURE = @"
                 USE [{0}]
                 IF OBJECT_ID ('{2}.{1}', 'P') IS NOT NULL
-                    DROP PROCEDURE temp.[{1}]
+                    DROP PROCEDURE {2}.[{1}]
             ";
 
         #endregion
