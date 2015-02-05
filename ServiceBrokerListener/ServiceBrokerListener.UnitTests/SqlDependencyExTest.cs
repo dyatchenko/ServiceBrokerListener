@@ -184,6 +184,7 @@
 
             Assert.AreEqual(true, errorReceived);
 
+            // It is impossible to start notification without CREATE PROCEDURE permission.
             ExecuteNonQuery("USE [TestDatabase] GRANT CREATE PROCEDURE TO [TempUser];", MASTER_CONNECTION_STRING);
             errorReceived = false;
             try
@@ -198,6 +199,7 @@
 
             Assert.AreEqual(false, errorReceived);
 
+            // There is supposed to be no exceptions with admin rights.
             using (SqlDependencyEx test = new SqlDependencyEx(
                     MASTER_CONNECTION_STRING,
                     TEST_DATABASE_NAME,
@@ -213,6 +215,7 @@
                 ALTER DATABASE [TestDatabase] SET DISABLE_BROKER; 
                 ALTER DATABASE [TestDatabase] SET MULTI_USER WITH ROLLBACK IMMEDIATE";
 
+            // It is impossible to start notification without configured service broker.
             ExecuteNonQuery(ScriptDisableBroker, MASTER_CONNECTION_STRING);
             bool errorReceived = false;
             try
@@ -227,7 +230,8 @@
 
             Assert.AreEqual(true, errorReceived);
 
-            NotificationTest(10, connStr: ADMIN_TEST_CONNECTION_STRING);
+            // Service broker supposed to be configured automatically with MASTER connection string.
+            NotificationTest(10, connStr: MASTER_CONNECTION_STRING);
         }
 
         public void ResourcesReleasabilityTest(int changesCount)
@@ -321,23 +325,15 @@
 
                         if (e.Data == null) return;
 
-                        if (e.NotificationType == SqlDependencyEx.NotificationTypes.Update)
-                        {
-                            elementsInDetailsCount +=
-                                e.Data.Element("inserted").Elements("row").Count();
-                            elementsInDetailsCount +=
-                                e.Data.Element("deleted").Elements("row").Count();
-                            return;
-                        }
+                        var inserted = e.Data.Element("inserted");
+                        var deleted = e.Data.Element("deleted");
 
-                        elementsInDetailsCount += e.NotificationType
-                                                  == SqlDependencyEx.NotificationTypes.Insert
-                                                      ? e.Data.Element("inserted")
-                                                            .Elements("row")
-                                                            .Count()
-                                                      : e.Data.Element("deleted")
-                                                            .Elements("row")
-                                                            .Count();
+                        elementsInDetailsCount += inserted != null
+                                                      ? inserted.Elements("row").Count()
+                                                      : 0;
+                        elementsInDetailsCount += deleted != null
+                                                      ? deleted.Elements("row").Count()
+                                                      : 0;
                     };
                 sqlDependency.Start();
 
