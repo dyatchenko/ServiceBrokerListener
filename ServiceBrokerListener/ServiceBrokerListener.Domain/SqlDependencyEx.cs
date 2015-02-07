@@ -86,7 +86,7 @@
         /// {1} - setup procedure name.
         /// {2} - service broker configuration statement.
         /// {3} - notification trigger configuration statement.
-        /// {4} - notification trigger drop statement.
+        /// {4} - notification trigger check statement.
         /// {5} - table name.
         /// {6} - schema name.
         /// </summary>
@@ -102,7 +102,7 @@
                             -- Service Broker configuration statement.
                             {2}
 
-                            -- Notification Trigger drop statement.
+                            -- Notification Trigger check statement.
                             {4}
 
                             -- Notification Trigger configuration statement.
@@ -223,10 +223,28 @@
         /// {2} - schema name.
         /// </summary>
         private const string SQL_FORMAT_UNINSTALL_SERVICE_BROKER_NOTIFICATION = @"
-              -- Droping service and queue.
-              DROP SERVICE [{1}];
-              IF OBJECT_ID ('{2}.{0}', 'SQ') IS NOT NULL
-	              DROP QUEUE {2}.[{0}];
+                DECLARE @serviceId INT
+                SELECT @serviceId = service_id FROM sys.services 
+                WHERE sys.services.name = '{1}'
+
+                DECLARE @ConvHandle uniqueidentifier
+                DECLARE Conv CURSOR FOR
+                SELECT CEP.conversation_handle FROM sys.conversation_endpoints CEP
+                WHERE CEP.service_id = @serviceId AND ([state] != 'CD' OR [lifetime] > GETDATE() + 1)
+
+                OPEN Conv;
+                FETCH NEXT FROM Conv INTO @ConvHandle;
+                WHILE (@@FETCH_STATUS = 0) BEGIN
+    	            END CONVERSATION @ConvHandle WITH CLEANUP;
+                    FETCH NEXT FROM Conv INTO @ConvHandle;
+                END
+                CLOSE Conv;
+                DEALLOCATE Conv;
+
+                -- Droping service and queue.
+                DROP SERVICE [{1}];
+                IF OBJECT_ID ('{2}.{0}', 'SQ') IS NOT NULL
+	                DROP QUEUE {2}.[{0}];
             ";
 
         #endregion
@@ -241,6 +259,11 @@
         private const string SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER = @"
                 IF OBJECT_ID ('{1}.{0}', 'TR') IS NOT NULL
                     DROP TRIGGER {1}.[{0}];
+            ";
+
+        private const string SQL_FORMAT_CHECK_NOTIFICATION_TRIGGER = @"
+                IF OBJECT_ID ('{1}.{0}', 'TR') IS NOT NULL
+                    RETURN;
             ";
 
         /// <summary>
@@ -343,7 +366,7 @@
                 
                 SELECT REPLACE(name , 'ListenerService_' , '') 
                 FROM sys.services 
-                WHERE [type] linke 'ListenerService_%';
+                WHERE [name] like 'ListenerService_%';
             ";
 
         #endregion
@@ -358,23 +381,23 @@
                 USE [{0}]
 
                 DECLARE @db_name VARCHAR(MAX)
-                DECLARE @schema_name VARCHAR(MAX)
                 SET @db_name = '{0}' -- provide your own db name                
 
                 DECLARE @proc_name VARCHAR(MAX)
                 DECLARE procedures CURSOR
                 FOR
-                SELECT [name]
-                FROM sys.objects
-                WHERE [type] = 'P' AND [name] like 'sp_UninstallListenerNotification_%'
+                SELECT   sys.schemas.name + '.' + sys.objects.name
+                FROM    sys.objects 
+                INNER JOIN sys.schemas ON sys.objects.schema_id = sys.schemas.schema_id
+                WHERE sys.objects.[type] = 'P' AND sys.objects.[name] like 'sp_UninstallListenerNotification_%'
 
                 OPEN procedures;
                 FETCH NEXT FROM procedures INTO @proc_name
 
                 WHILE (@@FETCH_STATUS = 0)
                 BEGIN
-                EXEC ('USE [' + @db_name + '] EXEC ' + @schema_name
-                                + '.' + @proc_name + ' DROP PROCEDURE '
+                EXEC ('USE [' + @db_name + '] EXEC ' + @proc_name + ' IF (OBJECT_ID (''' 
+                                + @proc_name + ''', ''P'') IS NOT NULL) DROP PROCEDURE '
                                 + @proc_name)
 
                 FETCH NEXT FROM procedures INTO @proc_name
@@ -385,9 +408,10 @@
 
                 DECLARE procedures CURSOR
                 FOR
-                SELECT [name]
-                FROM sys.objects
-                WHERE [type] = 'P' AND [name] like 'sp_InstallListenerNotification_%'
+                SELECT   sys.schemas.name + '.' + sys.objects.name
+                FROM    sys.objects 
+                INNER JOIN sys.schemas ON sys.objects.schema_id = sys.schemas.schema_id
+                WHERE sys.objects.[type] = 'P' AND sys.objects.[name] like 'sp_InstallListenerNotification_%'
 
                 OPEN procedures;
                 FETCH NEXT FROM procedures INTO @proc_name
@@ -409,6 +433,8 @@
         #endregion
 
         private const int COMMAND_TIMEOUT = 60000;
+
+        private static List<int> activeEntities = new List<int>(); 
 
         private Thread listenerThread;
 
@@ -470,6 +496,8 @@
             private set;
         }
 
+        public bool Active { get; private set; }
+
         public event EventHandler<TableChangedEventArgs> TableChanged;
 
         public SqlDependencyEx(
@@ -492,7 +520,13 @@
 
         public void Start()
         {
-            this.Stop();
+            lock (activeEntities)
+            {
+                if (activeEntities.Contains(this.Identity))
+                    throw new InvalidOperationException("An object with the same identity has already started.");
+                activeEntities.Add(this.Identity);
+            }
+
             this.InstallNotification();
 
             ThreadStart threadLoop = () =>
@@ -502,11 +536,16 @@
                         while (true)
                         {
                             string message = ReceiveEvent();
+                            this.Active = true;
                             if (!string.IsNullOrWhiteSpace(message))
                                 OnTableChanged(message);
                         }
                     }
-                    finally { UninstallNotification(); }
+                    finally
+                    {
+                        Active = false;
+                        UninstallNotification();
+                    }
                 };
 
             var thread = new Thread(threadLoop)
@@ -515,7 +554,7 @@
                                      string.Format(
                                          "{0}_Thread_{1}",
                                          this.GetType().FullName,
-                                         this.Identity.ToString("N")),
+                                         this.Identity),
                                  IsBackground = true
                              };
             thread.Start();
@@ -525,6 +564,9 @@
         public void Stop()
         {
             UninstallNotification();
+
+            lock (activeEntities)
+                if (activeEntities.Contains(Identity)) activeEntities.Remove(Identity);
 
             var thread = this.listenerThread;
             if ((thread == null) || (!thread.IsAlive))
@@ -556,6 +598,7 @@
             using (SqlConnection connection = new SqlConnection(connectionString))
             using (SqlCommand command = connection.CreateCommand())
             {
+                connection.Open();
                 command.CommandText = string.Format(SQL_FORMAT_GET_DEPENDENCY_IDENTITIES, database);
                 command.CommandType = CommandType.Text;
                 using (SqlDataReader reader = command.ExecuteReader())
@@ -654,7 +697,7 @@
                     this.SchemaName);
             string uninstallNotificationTriggerScript =
                 string.Format(
-                    SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER,
+                    SQL_FORMAT_CHECK_NOTIFICATION_TRIGGER,
                     this.ConversationTriggerName,
                     this.SchemaName);
             string installationProcedureScript =

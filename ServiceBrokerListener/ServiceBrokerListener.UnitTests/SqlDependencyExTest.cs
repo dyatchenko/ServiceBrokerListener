@@ -1,5 +1,6 @@
 ﻿namespace ServiceBrokerListener.UnitTests
 {
+    using System;
     using System.Data;
     using System.Data.SqlClient;
     using System.Linq;
@@ -79,11 +80,43 @@
         public void TestCleanup()
         {
             const string DropTestDatabaseScript = @"
-                IF EXISTS(select * from sys.databases where name='TestDatabase')
+                IF (EXISTS(select * from sys.databases where name='TestDatabase'))
                 BEGIN
                     ALTER DATABASE [TestDatabase] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
                     DROP DATABASE [TestDatabase]
-                    DROP LOGIN TempLogin;
+                END
+                IF (EXISTS(select * from master.dbo.syslogins where name = 'TempLogin'))
+                BEGIN
+                    DECLARE @loginNameToDrop sysname
+                    SET @loginNameToDrop = 'TempLogin';
+
+                    DECLARE sessionsToKill CURSOR FAST_FORWARD FOR
+                        SELECT session_id
+                        FROM sys.dm_exec_sessions
+                        WHERE login_name = @loginNameToDrop
+                    OPEN sessionsToKill
+                    
+                    DECLARE @sessionId INT
+                    DECLARE @statement NVARCHAR(200)
+                    
+                    FETCH NEXT FROM sessionsToKill INTO @sessionId
+                    
+                    WHILE @@FETCH_STATUS = 0
+                    BEGIN
+                        PRINT 'Killing session ' + CAST(@sessionId AS NVARCHAR(20)) + ' for login ' + @loginNameToDrop
+                    
+                        SET @statement = 'KILL ' + CAST(@sessionId AS NVARCHAR(20))
+                        EXEC sp_executesql @statement
+                    
+                        FETCH NEXT FROM sessionsToKill INTO @sessionId
+                    END
+                    
+                    CLOSE sessionsToKill
+                    DEALLOCATE sessionsToKill
+
+                    PRINT 'Dropping login ' + @loginNameToDrop
+                    SET @statement = 'DROP LOGIN [' + @loginNameToDrop + ']'
+                    EXEC sp_executesql @statement
                 END
                 ";
             ExecuteNonQuery(DropTestDatabaseScript, MASTER_CONNECTION_STRING);
@@ -220,6 +253,74 @@
 
             // Service broker supposed to be configured automatically with MASTER connection string.
             NotificationTest(10, connStr: MASTER_CONNECTION_STRING);
+        }
+
+        [Test]
+        public void GetActiveDbListenersTest()
+        {
+            Func<int> getDbDepCount =
+                () =>
+                SqlDependencyEx.GetDependencyDbIdentities(
+                    TEST_CONNECTION_STRING,
+                    TEST_DATABASE_NAME).Length;
+
+            using (var dep1 = new SqlDependencyEx(TEST_CONNECTION_STRING, TEST_DATABASE_NAME, TEST_TABLE_NAME, "temp"
+                , identity: 4))
+            using(var dep2 = new SqlDependencyEx(TEST_CONNECTION_STRING, TEST_DATABASE_NAME, TEST_TABLE_NAME, "temp"
+                , identity: 5))
+            {
+                dep1.Start();
+                
+                // Make sure db has been got 1 dependency object.
+                Assert.AreEqual(1, getDbDepCount());
+
+                dep2.Start();
+
+                // Make sure db has been got 2 dependency object.
+                Assert.AreEqual(2, getDbDepCount());
+            }
+
+            // Make sure db has no any dependency objects.
+            Assert.AreEqual(0, getDbDepCount());
+        }
+
+        [Test]
+        public void ClearDatabaseTest()
+        {
+            Func<int> getDbDepCount =
+                () =>
+                SqlDependencyEx.GetDependencyDbIdentities(
+                    TEST_CONNECTION_STRING,
+                    TEST_DATABASE_NAME).Length;
+
+            var dep1 = new SqlDependencyEx(
+                TEST_CONNECTION_STRING,
+                TEST_DATABASE_NAME,
+                TEST_TABLE_NAME,
+                "temp",
+                identity: 4);
+            var dep2 = new SqlDependencyEx(
+                TEST_CONNECTION_STRING,
+                TEST_DATABASE_NAME,
+                TEST_TABLE_NAME,
+                "temp",
+                identity: 5);
+
+            dep1.Start();
+            // Make sure db has been got 1 dependency object.
+            Assert.AreEqual(1, getDbDepCount());
+            dep2.Start();
+            // Make sure db has been got 2 dependency object.
+            Assert.AreEqual(2, getDbDepCount());
+
+            // Forced db cleaning
+            SqlDependencyEx.CleanDatabase(TEST_CONNECTION_STRING, TEST_DATABASE_NAME);
+
+            // Make sure db has no any dependency objects.
+            Assert.AreEqual(0, getDbDepCount());
+
+            dep1.Dispose();
+            dep2.Dispose();
         }
 
         public void ResourcesReleasabilityTest(int changesCount)
