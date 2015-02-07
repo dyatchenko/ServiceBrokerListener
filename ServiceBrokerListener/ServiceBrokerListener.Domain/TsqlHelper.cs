@@ -19,9 +19,11 @@
             return GetIntValueFromCommand(connection, CommandText);
         }
 
-        public static int GetConversationEndpointsCount(this SqlConnection connection)
+        public static int GetUnclosedConversationEndpointsCount(this SqlConnection connection)
         {
-            const string CommandText = "SELECT COUNT(*) FROM sys.conversation_endpoints";
+            const string CommandText =
+                "SELECT COUNT(*) FROM sys.conversation_endpoints "
+                + @"WHERE [state] != 'CD' OR [lifetime] > GETDATE() + 1";
 
             return GetIntValueFromCommand(connection, CommandText);
         }

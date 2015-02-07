@@ -156,18 +156,6 @@
         }
 
         [Test]
-        public void DetailsTestWith10000ChunkInserts()
-        {
-            DetailsTest(10000);
-        }
-
-        [Test]
-        public void DetailsTestWith100000ChunkInserts()
-        {
-            DetailsTest(100000);
-        }
-
-        [Test]
         public void MainPermissionExceptionCheckTest()
         {
             ExecuteNonQuery("USE [TestDatabase] DENY CREATE PROCEDURE TO [TempUser];", MASTER_CONNECTION_STRING);
@@ -236,11 +224,11 @@
 
         public void ResourcesReleasabilityTest(int changesCount)
         {
-            using (var sqlConnection = new SqlConnection(TEST_CONNECTION_STRING))
+            using (var sqlConnection = new SqlConnection(ADMIN_TEST_CONNECTION_STRING))
             {
                 sqlConnection.Open();
 
-                int sqlConversationEndpointsCount = sqlConnection.GetConversationEndpointsCount();
+                int sqlConversationEndpointsCount = sqlConnection.GetUnclosedConversationEndpointsCount();
                 int sqlConversationGroupsCount = sqlConnection.GetConversationGroupsCount();
                 int sqlServiceQueuesCount = sqlConnection.GetServiceQueuesCount();
                 int sqlServicesCount = sqlConnection.GetServicesCount();
@@ -278,7 +266,7 @@
                     sqlConnection.GetServiceQueuesCount());
                 Assert.AreEqual(
                     sqlConversationEndpointsCount,
-                    sqlConnection.GetConversationEndpointsCount());
+                    sqlConnection.GetUnclosedConversationEndpointsCount());
                 Assert.AreEqual(sqlTriggersCount, sqlConnection.GetTriggersCount());
                 Assert.AreEqual(sqlProceduresCount, sqlConnection.GetProceduresCount());
             }

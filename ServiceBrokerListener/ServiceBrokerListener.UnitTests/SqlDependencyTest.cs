@@ -166,7 +166,7 @@
             {
                 sqlConnection.Open();
 
-                int sqlConversationEndpointsCount = sqlConnection.GetConversationEndpointsCount();
+                int sqlConversationEndpointsCount = sqlConnection.GetUnclosedConversationEndpointsCount();
                 int sqlConversationGroupsCount = sqlConnection.GetConversationGroupsCount();
                 int sqlServiceQueuesCount = sqlConnection.GetServiceQueuesCount();
                 int sqlServicesCount = sqlConnection.GetServicesCount();
@@ -186,7 +186,7 @@
                     sqlConnection.GetConversationGroupsCount());
                 Assert.AreNotEqual(
                     sqlConversationEndpointsCount,
-                    sqlConnection.GetConversationEndpointsCount());
+                    sqlConnection.GetUnclosedConversationEndpointsCount());
             }
         }
 

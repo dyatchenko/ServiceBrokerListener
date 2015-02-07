@@ -1,8 +1,10 @@
 ﻿namespace ServiceBrokerListener.Domain
 {
     using System;
+    using System.Collections.Generic;
     using System.Data;
     using System.Data.SqlClient;
+    using System.Linq;
     using System.Text;
     using System.Threading;
     using System.Xml.Linq;
@@ -12,10 +14,10 @@
         [Flags]
         public enum NotificationTypes
         {
-            None     = 0,
-            Insert   = 1 << 1,
-            Update   = 1 << 2,
-            Delete   = 1 << 3
+            None = 0,
+            Insert = 1 << 1,
+            Update = 1 << 2,
+            Delete = 1 << 3
         }
 
         public class TableChangedEventArgs : EventArgs
@@ -57,6 +59,8 @@
         }
 
         #region Scripts
+
+        #region Procedures
 
         private const string SQL_PERMISSIONS_INFO = @"
                     DECLARE @msg VARCHAR(MAX)
@@ -140,6 +144,7 @@
         /// {2} - notification trigger drop statement.
         /// {3} - service broker uninstall statement.
         /// {4} - schema name.
+        /// {5} - install procedure name.
         /// </summary>
         private const string SQL_FORMAT_CREATE_UNINSTALLATION_PROCEDURE = @"
                 USE [{0}]
@@ -155,10 +160,19 @@
 
                             -- Service Broker uninstall statement.
                             {2}
+
+                            IF OBJECT_ID (''{4}.{5}'', ''P'') IS NOT NULL
+                                DROP PROCEDURE {4}.{5}
+                            
+                            DROP PROCEDURE {4}.{1}
                         END
                         ')
                 END
             ";
+
+        #endregion
+
+        #region ServiceBroker notification
 
         /// <summary>
         /// T-SQL script-template which prepares database for ServiceBroker notification.
@@ -209,34 +223,15 @@
         /// {2} - schema name.
         /// </summary>
         private const string SQL_FORMAT_UNINSTALL_SERVICE_BROKER_NOTIFICATION = @"
-                BEGIN TRY
-                    -- Release all unised conversation handlers.
-
-                    DECLARE @serviceId INT
-                    SELECT @serviceId = service_id FROM sys.services 
-                    WHERE sys.services.name = '{1}'
-
-                    DECLARE @ConvHandle uniqueidentifier
-                    DECLARE Conv CURSOR FOR
-                    SELECT CEP.conversation_handle FROM sys.conversation_endpoints CEP
-                    WHERE CEP.service_id = @serviceId
-
-                    OPEN Conv;
-                    FETCH NEXT FROM Conv INTO @ConvHandle;
-                    WHILE (@@FETCH_STATUS = 0) BEGIN
-    	                END CONVERSATION @ConvHandle WITH CLEANUP;
-                        FETCH NEXT FROM Conv INTO @ConvHandle;
-                    END
-                    CLOSE Conv;
-                    DEALLOCATE Conv;
-
-                    -- Droping service and queue.
-                    DROP SERVICE [{1}];
-                    IF OBJECT_ID ('{2}.{0}', 'SQ') IS NOT NULL
-	                    DROP QUEUE {2}.[{0}];
-                END TRY
-                BEGIN CATCH END CATCH
+              -- Droping service and queue.
+              DROP SERVICE [{1}];
+              IF OBJECT_ID ('{2}.{0}', 'SQ') IS NOT NULL
+	              DROP QUEUE {2}.[{0}];
             ";
+
+        #endregion
+
+        #region Notification Trigger
 
         /// <summary>
         /// T-SQL script-template which creates notification trigger.
@@ -297,13 +292,17 @@
                 	DECLARE @ConvHandle UNIQUEIDENTIFIER
                 	--Determine the Initiator Service, Target Service and the Contract 
                 	BEGIN DIALOG @ConvHandle 
-                        FROM SERVICE [{3}] TO SERVICE '{3}' ON CONTRACT [DEFAULT] WITH ENCRYPTION=OFF; 
+                        FROM SERVICE [{3}] TO SERVICE '{3}' ON CONTRACT [DEFAULT] WITH ENCRYPTION=OFF, LIFETIME = 60; 
 	                --Send the Message
 	                SEND ON CONVERSATION @ConvHandle MESSAGE TYPE [DEFAULT] (@message);
 	                --End conversation
-	                END CONVERSATION @ConvHandle WITH CLEANUP;
+	                END CONVERSATION @ConvHandle;
                 END
             ";
+
+        #endregion
+
+        #region Miscellaneous
 
         /// <summary>
         /// T-SQL script-template which helps to receive changed data in monitorable table.
@@ -318,9 +317,7 @@
                 USE [{0}]
                 WAITFOR (RECEIVE TOP(1) @ConvHandle=Conversation_Handle
                             , @message=message_body FROM {3}.[{1}]), TIMEOUT {2};
-                BEGIN TRY
-	                END CONVERSATION @ConvHandle WITH CLEANUP;
-                END TRY BEGIN CATCH END CATCH
+	            BEGIN TRY END CONVERSATION @ConvHandle; END TRY BEGIN CATCH END CATCH
 
                 SELECT CAST(@message AS NVARCHAR(MAX)) 
             ";
@@ -338,22 +335,80 @@
             ";
 
         /// <summary>
-        /// T-SQL script-template which deletes stored procedure.
+        /// T-SQL script-template which returns all dependency identities in the database.
         /// {0} - database name.
-        /// {1} - stored procedure name.
-        /// {2} - schema name.
         /// </summary>
-        private const string SQL_FORMAT_DROP_PROCEDURE = @"
+        private const string SQL_FORMAT_GET_DEPENDENCY_IDENTITIES = @"
                 USE [{0}]
-                IF OBJECT_ID ('{2}.{1}', 'P') IS NOT NULL
-                    DROP PROCEDURE {2}.[{1}]
+                
+                SELECT REPLACE(name , 'ListenerService_' , '') 
+                FROM sys.services 
+                WHERE [type] linke 'ListenerService_%';
             ";
 
         #endregion
 
-        private const int COMMAND_TIMEOUT = 60000;
+        #region Forced cleaning of database
 
-        private readonly Guid uniqueNameIdentifier = Guid.NewGuid();
+        /// <summary>
+        /// T-SQL script-template which cleans database from notifications.
+        /// {0} - database name.
+        /// </summary>
+        private const string SQL_FORMAT_FORCED_DATABASE_CLEANING = @"
+                USE [{0}]
+
+                DECLARE @db_name VARCHAR(MAX)
+                DECLARE @schema_name VARCHAR(MAX)
+                SET @db_name = '{0}' -- provide your own db name                
+
+                DECLARE @proc_name VARCHAR(MAX)
+                DECLARE procedures CURSOR
+                FOR
+                SELECT [name]
+                FROM sys.objects
+                WHERE [type] = 'P' AND [name] like 'sp_UninstallListenerNotification_%'
+
+                OPEN procedures;
+                FETCH NEXT FROM procedures INTO @proc_name
+
+                WHILE (@@FETCH_STATUS = 0)
+                BEGIN
+                EXEC ('USE [' + @db_name + '] EXEC ' + @schema_name
+                                + '.' + @proc_name + ' DROP PROCEDURE '
+                                + @proc_name)
+
+                FETCH NEXT FROM procedures INTO @proc_name
+                END
+
+                CLOSE procedures;
+                DEALLOCATE procedures;
+
+                DECLARE procedures CURSOR
+                FOR
+                SELECT [name]
+                FROM sys.objects
+                WHERE [type] = 'P' AND [name] like 'sp_InstallListenerNotification_%'
+
+                OPEN procedures;
+                FETCH NEXT FROM procedures INTO @proc_name
+
+                WHILE (@@FETCH_STATUS = 0)
+                BEGIN
+                EXEC ('USE [' + @db_name + '] DROP PROCEDURE '
+                                + @proc_name)
+
+                FETCH NEXT FROM procedures INTO @proc_name
+                END
+
+                CLOSE procedures;
+                DEALLOCATE procedures;
+            ";
+
+        #endregion
+
+        #endregion
+
+        private const int COMMAND_TIMEOUT = 60000;
 
         private Thread listenerThread;
 
@@ -361,7 +416,7 @@
         {
             get
             {
-                return string.Format("ListenerQueue-{0}", this.uniqueNameIdentifier);
+                return string.Format("ListenerQueue_{0}", this.Identity);
             }
         }
 
@@ -369,7 +424,7 @@
         {
             get
             {
-                return string.Format("ListenerService-{0}", this.uniqueNameIdentifier);
+                return string.Format("ListenerService_{0}", this.Identity);
             }
         }
 
@@ -377,7 +432,7 @@
         {
             get
             {
-                return string.Format("tr_Listener_{0}", this.uniqueNameIdentifier.ToString("N"));
+                return string.Format("tr_Listener_{0}", this.Identity);
             }
         }
 
@@ -385,9 +440,7 @@
         {
             get
             {
-                return string.Format(
-                    "sp_InstallListenerNotification_{0}",
-                    this.uniqueNameIdentifier.ToString("N"));
+                return string.Format("sp_InstallListenerNotification_{0}", this.Identity);
             }
         }
 
@@ -395,9 +448,7 @@
         {
             get
             {
-                return string.Format(
-                    "sp_UninstallListenerNotification_{0}",
-                    this.uniqueNameIdentifier.ToString("N"));
+                return string.Format("sp_UninstallListenerNotification_{0}", this.Identity);
             }
         }
 
@@ -413,6 +464,14 @@
 
         public bool DetailsIncluded { get; private set; }
 
+        public int Identity
+        {
+            get;
+            private set;
+        }
+
+        public event EventHandler<TableChangedEventArgs> TableChanged;
+
         public SqlDependencyEx(
             string connectionString,
             string databaseName,
@@ -420,7 +479,7 @@
             string schemaName = "dbo",
             NotificationTypes listenerType =
                 NotificationTypes.Insert | NotificationTypes.Update | NotificationTypes.Delete,
-            bool receiveDetails = true)
+            bool receiveDetails = true, int identity = 1)
         {
             this.ConnectionString = connectionString;
             this.DatabaseName = databaseName;
@@ -428,9 +487,8 @@
             this.SchemaName = schemaName;
             this.NotificaionTypes = listenerType;
             this.DetailsIncluded = receiveDetails;
+            this.Identity = identity;
         }
-
-        public event EventHandler<TableChangedEventArgs> TableChanged;
 
         public void Start()
         {
@@ -457,7 +515,7 @@
                                      string.Format(
                                          "{0}_Thread_{1}",
                                          this.GetType().FullName,
-                                         this.uniqueNameIdentifier.ToString("N")),
+                                         this.Identity.ToString("N")),
                                  IsBackground = true
                              };
             thread.Start();
@@ -471,7 +529,7 @@
             var thread = this.listenerThread;
             if ((thread == null) || (!thread.IsAlive))
                 return;
-            
+
             thread.Abort();
             thread.Join();
         }
@@ -479,6 +537,55 @@
         public void Dispose()
         {
             Stop();
+        }
+
+        public static int[] GetDependencyDbIdentities(string connectionString, string database)
+        {
+            if (connectionString == null)
+            {
+                throw new ArgumentNullException("connectionString");
+            }
+
+            if (database == null)
+            {
+                throw new ArgumentNullException("database");
+            }
+
+            List<string> result = new List<string>();
+
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            using (SqlCommand command = connection.CreateCommand())
+            {
+                command.CommandText = string.Format(SQL_FORMAT_GET_DEPENDENCY_IDENTITIES, database);
+                command.CommandType = CommandType.Text;
+                using (SqlDataReader reader = command.ExecuteReader())
+                    while (reader.Read())
+                        result.Add(reader.GetString(0));
+            }
+
+            int temp;
+            return
+                result.Select(p => int.TryParse(p, out temp) ? temp : -1)
+                    .Where(p => p != -1)
+                    .ToArray();
+        }
+
+        public static void CleanDatabase(string connectionString, string database)
+        {
+            ExecuteNonQuery(
+                string.Format(SQL_FORMAT_FORCED_DATABASE_CLEANING, database),
+                connectionString);
+        }
+
+        private static void ExecuteNonQuery(string commandText, string connectionString)
+        {
+            using (SqlConnection conn = new SqlConnection(connectionString))
+            using (SqlCommand command = new SqlCommand(commandText, conn))
+            {
+                conn.Open();
+                command.CommandType = CommandType.Text;
+                command.ExecuteNonQuery();
+            }
         }
 
         private string ReceiveEvent()
@@ -523,7 +630,8 @@
                     this.UninstallListenerProcedureName,
                     uninstallServiceBrokerNotificationScript.Replace("'", "''"),
                     uninstallNotificationTriggerScript.Replace("'", "''"),
-                    this.SchemaName);
+                    this.SchemaName,
+                    this.InstallListenerProcedureName);
             return uninstallationProcedureScript;
         }
 
@@ -565,11 +673,11 @@
         private string GetTriggerTypeByListenerType()
         {
             StringBuilder result = new StringBuilder();
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.Insert)) 
+            if (this.NotificaionTypes.HasFlag(NotificationTypes.Insert))
                 result.Append("INSERT");
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.Update)) 
+            if (this.NotificaionTypes.HasFlag(NotificationTypes.Update))
                 result.Append(result.Length == 0 ? "UPDATE" : ", UPDATE");
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.Delete)) 
+            if (this.NotificaionTypes.HasFlag(NotificationTypes.Delete))
                 result.Append(result.Length == 0 ? "DELETE" : ", DELETE");
             if (result.Length == 0) result.Append("INSERT");
 
@@ -583,20 +691,7 @@
                 this.DatabaseName,
                 this.UninstallListenerProcedureName,
                 this.SchemaName);
-            string dropUsedProcedures = string.Format(
-                "{0}\r\n{1}",
-                string.Format(
-                    SQL_FORMAT_DROP_PROCEDURE,
-                    this.DatabaseName,
-                    this.InstallListenerProcedureName,
-                    this.SchemaName),
-                string.Format(
-                    SQL_FORMAT_DROP_PROCEDURE,
-                    this.DatabaseName,
-                    this.UninstallListenerProcedureName,
-                    this.SchemaName));
             ExecuteNonQuery(execUninstallationProcedureScript, this.ConnectionString);
-            ExecuteNonQuery(dropUsedProcedures, this.ConnectionString);
         }
 
         private void InstallNotification()
@@ -609,17 +704,6 @@
             ExecuteNonQuery(GetInstallNotificationProcedureScript(), this.ConnectionString);
             ExecuteNonQuery(GetUninstallNotificationProcedureScript(), this.ConnectionString);
             ExecuteNonQuery(execInstallationProcedureScript, this.ConnectionString);
-        }
-
-        private void ExecuteNonQuery(string commandText, string connectionString)
-        {
-            using (SqlConnection conn = new SqlConnection(connectionString))
-            using (SqlCommand command = new SqlCommand(commandText, conn))
-            {
-                conn.Open();
-                command.CommandType = CommandType.Text;
-                command.ExecuteNonQuery();
-            }
         }
 
         private void OnTableChanged(string message)
