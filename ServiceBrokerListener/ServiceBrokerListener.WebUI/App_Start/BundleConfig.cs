@@ -13,7 +13,6 @@
             bundles.Add(
                 new StyleBundle("~/Content/Start/css").Include(
                     "~/Content/Start/*.css"));
-
             bundles.Add(
                 new ScriptBundle("~/bundles/scripts").Include(
                     "~/Scripts/jquery-1.11.1.min.js",

@@ -2,152 +2,143 @@
 @using ServiceBrokerListener.WebUI.Helpers
 @model IEnumerable<TableRow>
 
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
-<html>
-    <head>
-        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <title>Service Broker Listener Example</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        @Styles.Render("~/Content/css")
-        @Styles.Render("~/Content/Start/css")
-        @Scripts.Render("~/bundles/scripts")
+@{
+    Layout = "../Shared/_Layout.cshtml";
+}
 
-        <script src="signalr/hubs"></script>
-        <script type='text/javascript'>
-            $(document).ready(function () {
-                var data = @Html.Raw(@Model.ToJsArray()),
-                    homeHub = $.connection.homeHub,
-                    eventsLog = document.getElementById("TextArea1"),
-                    tableDiv = document.getElementById('wb_Shape4'),
-                    receiveEvent = true,
-                    config,
-                    hot;
+@section Scripts{
+    <script src="signalr/hubs"></script>
+    <script type='text/javascript'>
+        $(document).ready(function () {
+            var data = @Html.Raw(@Model.ToJsArray()),
+                homeHub = $.connection.homeHub,
+                eventsLog = document.getElementById("TextArea1"),
+                tableDiv = document.getElementById('wb_Shape4'),
+                receiveEvent = true,
+                config,
+                hot;
 
-                homeHub.client.broadcastMessage = function(message) {
-                    eventsLog.value += ' > Server: ' + message + '\r\n';
+            homeHub.client.broadcastMessage = function(message) {
+                eventsLog.value += ' > Server: ' + message + '\r\n';
 
-                    var jsn = JSON.parse(message);
-                    if (jsn === null || jsn["0"] === null)
-                        return;
+                var jsn = JSON.parse(message);
+                if (jsn === null || jsn["0"] === null)
+                    return;
 
-                    receiveEvent = false;
-                    for (var i = 0; i < jsn["0"].length; i++)
-                    {
-                        var x = jsn["0"][i][0], y = jsn["0"][i][1], nval = jsn["0"][i][3];
-                        hot.setDataAtCell(x, y, nval);
-                    }
-                    receiveEvent = true;
-                };
-
-                config = {
-                    data: data,
-                    minRows: 14,
-                    minCols: 6,
-                    maxRows: 14,
-                    maxCols: 6,
-                    minSpareRows: 1,
-                    autoWrapRow: true,
-                    colHeaders: true,
-                    contextMenu: true
-                };
-  
-                Handsontable.hooks.getRegistered()
-                    .forEach(function(hook) {  
-                        if (hook !== 'afterChange') return;
-
-                        config[hook] = function() {
-                            logEvents(hook, arguments);
-                        };
-                    });
-   
-                function logEvents(event, info) {
-                    if (!receiveEvent) return;
-                    var vals = [], str, text;
-   
-                    for (var d = 0; d < info.length; d++) {
-                        try { str = JSON.stringify(info[d]); }
-                        catch (e) { str = info[d].toString();  }
-  
-                        if (str === void 0) continue;
-                        if (d < info.length - 1) str += ',';
-        
-                        vals.push(str);
-                    }
-  
-                    text = ' > ' + vals.join(" ") + ' \r\n'; 
-                    eventsLog.value += text;
-
-                    //homeHub.server.send(JSON.stringify(info));
-
-                    receiveEvent = false;
-                    $.ajax({
-                        url: "/home/settablechanges",
-                        type: "POST",
-                        data: JSON.stringify({ "json" : JSON.stringify(info) }),
-                        contentType: "application/json; charset=utf-8",
-                        complete: function(serverResponse) {
-                            eventsLog.value += ' > Server: ' + serverResponse.responseText + '\r\n';
-                            receiveEvent = true;
-                        }
-                    });
-                }
-
-                $.connection.hub.start().done(function() { hot = new Handsontable(tableDiv, config); });
-            });
-        </script>
-        @section scripts{
-        <script type="text/javascript">
-            $(document).ready(function()
-            {
-                var jQueryDialog1Opts =
+                receiveEvent = false;
+                for (var i = 0; i < jsn["0"].length; i++)
                 {
-                    modal: true,
-                    width: 353,
-                    height: 221,
-                    position: { my: 'center', at: 'center', of: window },
-                    resizable: false,
-                    draggable: true,
-                    closeOnEscape: true,
-                    show: 'fade',
-                    hide: 'fade',
-                    autoOpen: true
-                };
-                $("#jQueryDialog1").dialog(jQueryDialog1Opts);
-            });
-        </script>}
-    </head>
-    <body>
-        <div id="container">
-            <div id="wb_Shape3">
-                <img src="~/Images/img0004.png" id="Shape3" alt=""></div>
-            <div id="wb_Shape1">
-                <a href="https://github.com/dyatchenko/ServiceBrokerListener"><img src="~/images/img0001.png" id="Shape1" alt=""></a></div>
-            <div id="wb_Text1">
-                <span style="color:#FFFFFF;font-family:Calibri;font-size:27px;"><strong>Service Broker Listener Web Example</strong></span></div>
-            <div id="wb_Shape2">
-                <img src="~/images/img0003.png" id="Shape2" alt=""></div>
-            <div id="wb_Text7">
-                <span style="color:#FFFFFF;font-family:Tahoma;font-size:11px;">Powered by Dyatchenko&nbsp; E-Mail: dyatchenko.dv@gmail.com</span></div>
-            <div id="wb_JavaScript1">
-                <a href="http://www.linkedin.com/in/dyatchenko" rel="nofollow"><img style="width:75px;height:30px;border-width:0;" alt="Dyatchenko Linkedin" title="Dyatchenko Linkedin" src="~/Images/logo_linkedin.gif"></a></div>
-            <div id="wb_JavaScript2">
-                <a href="http://www.facebook.com/100004461885316" rel="nofollow"><img style="width:75px;height:30px;border-width:0;" alt="Dyatchenko Facebook page" title="Dyatchenko Facebook page" src="~/Images/logo_facebook.gif"></a></div>
-            <div id="Html1">
-                <div id="wb_Shape4">
-                </div></div>
-            <div id="wb_Image1">
-                <a href="https://github.com/dyatchenko/ServiceBrokerListener" title="Service Broker Listener"><img src="~/images/img0002.png" id="Image1" alt="Service Broker Listener"></a></div>
-            <div id="jQueryDialog1" title="Service Broker Listener Example">
-                <div id="wb_Text2">
-                    <span style="color:#000000;font-family:Calibri;font-size:17px;">This example shows how to track MSSQL database table changes in the C# code with a SqlDependencyEx component. You can change a test table and see how another users sumultaneously do the same things.</span></div>
-            </div>
+                    var x = jsn["0"][i][0], y = jsn["0"][i][1], nval = jsn["0"][i][3];
+                    hot.setDataAtCell(x, y, nval);
+                }
+                receiveEvent = true;
+            };
 
-            <textarea name="TextArea1" id="TextArea1" rows="17" cols="33" readonly> > System started
+            config = {
+                data: data,
+                minRows: 14,
+                minCols: 6,
+                maxRows: 14,
+                maxCols: 6,
+                minSpareRows: 1,
+                autoWrapRow: true,
+                colHeaders: true,
+                contextMenu: true
+            };
+  
+            Handsontable.hooks.getRegistered()
+                .forEach(function(hook) {  
+                    if (hook !== 'afterChange') return;
+
+                    config[hook] = function() {
+                        logEvents(hook, arguments);
+                    };
+                });
+   
+            function logEvents(event, info) {
+                if (!receiveEvent) return;
+                var vals = [], str, text;
+   
+                for (var d = 0; d < info.length; d++) {
+                    try { str = JSON.stringify(info[d]); }
+                    catch (e) { str = info[d].toString();  }
+  
+                    if (str === void 0) continue;
+                    if (d < info.length - 1) str += ',';
+        
+                    vals.push(str);
+                }
+  
+                text = ' > ' + vals.join(" ") + ' \r\n'; 
+                eventsLog.value += text;
+
+                //homeHub.server.send(JSON.stringify(info));
+
+                receiveEvent = false;
+                $.ajax({
+                    url: "/home/settablechanges",
+                    type: "POST",
+                    data: JSON.stringify({ "json" : JSON.stringify(info) }),
+                    contentType: "application/json; charset=utf-8",
+                    complete: function(serverResponse) {
+                        eventsLog.value += ' > Server: ' + serverResponse.responseText + '\r\n';
+                        receiveEvent = true;
+                    }
+                });
+            }
+
+            $.connection.hub.start().done(function() { hot = new Handsontable(tableDiv, config); });
+        });
+    </script>
+    <script type="text/javascript">
+        $(document).ready(function()
+        {
+            var jQueryDialog1Opts =
+            {
+                modal: true,
+                width: 353,
+                height: 221,
+                position: { my: 'center', at: 'center', of: window },
+                resizable: false,
+                draggable: true,
+                closeOnEscape: true,
+                show: 'fade',
+                hide: 'fade',
+                autoOpen: true
+            };
+            $("#jQueryDialog1").dialog(jQueryDialog1Opts);
+        });
+    </script>
+}
+
+<div id="container">
+    <div id="wb_Shape3">
+        <img src="~/Images/img0004.png" id="Shape3" alt=""></div>
+    <div id="wb_Shape1">
+        <a href="https://github.com/dyatchenko/ServiceBrokerListener"><img src="~/images/img0001.png" id="Shape1" alt=""></a></div>
+    <div id="wb_Text1">
+        <span style="color:#FFFFFF;font-family:Calibri;font-size:27px;"><strong>Service Broker Listener Web Example</strong></span></div>
+    <div id="wb_Shape2">
+        <img src="~/images/img0003.png" id="Shape2" alt=""></div>
+    <div id="wb_Text7">
+        <span style="color:#FFFFFF;font-family:Tahoma;font-size:11px;">Powered by Dyatchenko&nbsp; E-Mail: dyatchenko.dv@gmail.com</span></div>
+    <div id="wb_JavaScript1">
+        <a href="http://www.linkedin.com/in/dyatchenko" rel="nofollow"><img style="width:75px;height:30px;border-width:0;" alt="Dyatchenko Linkedin" title="Dyatchenko Linkedin" src="~/Images/logo_linkedin.gif"></a></div>
+    <div id="wb_JavaScript2">
+        <a href="http://www.facebook.com/100004461885316" rel="nofollow"><img style="width:75px;height:30px;border-width:0;" alt="Dyatchenko Facebook page" title="Dyatchenko Facebook page" src="~/Images/logo_facebook.gif"></a></div>
+    <div id="Html1">
+        <div id="wb_Shape4">
+        </div></div>
+    <div id="wb_Image1">
+        <a href="https://github.com/dyatchenko/ServiceBrokerListener" title="Service Broker Listener"><img src="~/images/img0002.png" id="Image1" alt="Service Broker Listener"></a></div>
+    <div id="jQueryDialog1" title="Service Broker Listener Example">
+        <div id="wb_Text2">
+            <span style="color:#000000;font-family:Calibri;font-size:17px;">This example shows how to track MSSQL database table changes in the C# code with a SqlDependencyEx component. You can change a test table and see how another users sumultaneously do the same things.</span></div>
+    </div>
+    <textarea name="TextArea1" id="TextArea1" rows="17" cols="33" readonly> > System started
 </textarea>
-            <div id="wb_Text3">
-                <span style="color:#696969;font-family:Calibri;font-size:20px;"><strong>Console output:</strong></span></div>
-            <div id="wb_Line1">
-                <img src="~/images/img0005.png" id="Line1" alt=""></div>
-        </div>
-    </body>
-</html>
+    <div id="wb_Text3">
+        <span style="color:#696969;font-family:Calibri;font-size:20px;"><strong>Console output:</strong></span></div>
+    <div id="wb_Line1">
+        <img src="~/images/img0005.png" id="Line1" alt=""></div>
+</div>
