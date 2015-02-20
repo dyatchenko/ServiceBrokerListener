@@ -1,0 +1,22 @@
+﻿<!DOCTYPE html>
+
+<html>
+<head>
+    <meta name="viewport" content="width=device-width" />
+    <link href="~/Content/bootstrap.css" rel="stylesheet" />
+    <link href="~/Content/bootstrap-theme.css" rel="stylesheet">
+    <title>@ViewBag.Title</title>
+    <style>
+        .btn a { color: white; text-decoration: none }
+        body { background-color: #F1F1F1 }
+    </style>
+</head>
+    <body>
+        <div class="navbar navbar-inverse" role="navigation">
+            <a class="navbar-brand" href="#">SECURE CHAT</a>
+        </div>
+        <div class="text-center">
+            @RenderBody()
+        </div>
+    </body>
+</html>

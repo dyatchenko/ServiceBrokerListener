@@ -1,0 +1,422 @@
+div#container
+{
+   width: 700px;
+   position: relative;
+   margin: 0 auto 0 auto;
+   text-align: left;
+}
+body
+{
+   background-color: #FFFFFF;
+   background-image: url(../images/index_bkgrnd.png);
+   background-repeat: repeat-x;
+   color: #000000;
+   font-family: Arial;
+   font-size: 13px;
+   margin: 0;
+   text-align: center;
+}
+#Shape3
+{
+   border-width: 0;
+}
+#Shape1
+{
+   border-width: 0;
+}
+#wb_Text1 
+{
+   background-color: transparent;
+   border: 0px #006400 solid;
+   padding: 0;
+   margin: 0;
+   text-align: left;
+}
+#wb_Text1 div
+{
+   text-align: left;
+}
+#Shape2
+{
+   border-width: 0;
+}
+#wb_Text7 
+{
+   background-color: transparent;
+   border: 0px #000000 solid;
+   padding: 0;
+   margin: 0;
+   text-align: center;
+}
+#wb_Text7 div
+{
+   text-align: center;
+}
+#Image1
+{
+   border: 0px #000000 solid;
+   left: 0;
+   top: 0;
+   width: 100%;
+   height: 100%;
+}
+.ui-dialog
+{
+   padding: 4px 4px 4px 4px;
+}
+.ui-dialog .ui-dialog-title
+{
+   font-family: Arial;
+   font-size: 19px;
+   font-weight: normal;
+   font-style: normal;
+   color: #EAF5F7;
+}
+.ui-dialog .ui-dialog-titlebar
+{
+   padding: 10px 10px 10px 30px;
+}
+.ui-dialog .ui-dialog-titlebar-close
+{
+   right: 10px;
+}
+#wb_Text2 
+{
+   background-color: transparent;
+   border: 0px #000000 solid;
+   padding: 0;
+   margin: 0;
+   text-align: center;
+}
+#wb_Text2 div
+{
+   text-align: center;
+}
+#TextArea1
+{
+   border: 1px #A9A9A9 solid;
+   background-color: #000000;
+   color :#32CD32;
+   font-family: Arial;
+   font-weight: bold;
+   font-size: 13px;
+   text-align: left;
+   resize: none;
+}
+#wb_Text3 
+{
+   background-color: transparent;
+   border: 0px #000000 solid;
+   padding: 0;
+   margin: 0;
+   text-align: left;
+}
+#wb_Text3 div
+{
+   text-align: left;
+}
+#Line1
+{
+   border-width: 0;
+   height: 190px;
+   width: 9px;
+}
+#wb_Text1
+{
+   position: absolute;
+   left: 21px;
+   top: 40px;
+   width: 456px;
+   height: 33px;
+   z-index: 4;
+   text-align: left;
+}
+#Shape1
+{
+   width: 694px;
+   height: 52px;
+}
+#wb_Text2
+{
+   position: absolute;
+   left: 19px;
+   top: 21px;
+   width: 309px;
+   height: 105px;
+   text-align: center;
+   z-index: 0;
+}
+#Shape2
+{
+   width: 694px;
+   height: 46px;
+}
+#wb_Text3
+{
+   position: absolute;
+   left: 460px;
+   top: 105px;
+   width: 250px;
+   height: 24px;
+   z-index: 13;
+   text-align: left;
+}
+#wb_Image1
+{
+   position: absolute;
+   left: 552px;
+   top: 8px;
+   width: 149px;
+   height: 149px;
+   z-index: 10;
+}
+#Shape3
+{
+   width: 731px;
+   height: 564px;
+}
+#TextArea1
+{
+   position: absolute;
+   left: 460px;
+   top: 140px;
+   width: 218px;
+   height: 298px;
+   z-index: 12;
+}
+#Html1
+{
+   position: absolute;
+   overflow: scroll;
+   left: 21px;
+   top: 103px;
+   width: 415px;
+   height: 380px;
+   z-index: 9;
+}
+#wb_Text7
+{
+   position: absolute;
+   left: 0px;
+   top: 504px;
+   width: 316px;
+   height: 13px;
+   text-align: center;
+   z-index: 6;
+}
+#wb_Line1
+{
+   position: absolute;
+   left: 444px;
+   top: 195px;
+   width: 1px;
+   height: 182px;
+   z-index: 14;
+}
+#wb_Shape1
+{
+   position: absolute;
+   left: 7px;
+   top: 33px;
+   width: 694px;
+   height: 52px;
+   z-index: 3;
+}
+#wb_JavaScript1
+{
+   position: absolute;
+   left: 616px;
+   top: 455px;
+   width: 76px;
+   height: 28px;
+   z-index: 7;
+}
+#wb_Shape2
+{
+   position: absolute;
+   left: 7px;
+   top: 488px;
+   width: 694px;
+   height: 46px;
+   z-index: 5;
+}
+#wb_JavaScript2
+{
+   position: absolute;
+   left: 614px;
+   top: 496px;
+   width: 76px;
+   height: 28px;
+   z-index: 8;
+}
+#wb_Shape3
+{
+   position: absolute;
+   left: 0px;
+   top: 0px;
+   width: 731px;
+   height: 564px;
+   z-index: 1;
+}
+@media only screen and (max-width: 320px)
+{
+div#container
+{
+   width: 320px;
+}
+#wb_Shape3
+{
+   left: 84px;
+   top: 313px;
+   visibility: hidden;
+   display: none;
+}
+#BuildWith1
+{
+   left: 333px;
+   top: 566px;
+   width: 88px;
+   height: 31px;
+   visibility: visible;
+   display: inline;
+}
+#wb_Shape1
+{
+   left: 0px;
+   top: 35px;
+   visibility: visible;
+   display: inline;
+}
+#wb_Text1
+{
+   left: 30px;
+   top: 57px;
+   width: 456px;
+   height: 33px;
+   visibility: visible;
+   display: inline;
+}
+#wb_Shape2
+{
+   left: 0px;
+   top: 435px;
+   visibility: hidden;
+   display: none;
+}
+#wb_Image1
+{
+   left: 174px;
+   top: 12px;
+   width: 149px;
+   height: 149px;
+   visibility: visible;
+   display: inline;
+}
+}
+a
+{
+   color: #0000FF;
+   text-decoration: underline;
+}
+a:visited
+{
+   color: #800080;
+}
+a:active
+{
+   color: #FF0000;
+}
+a:hover
+{
+   color: #0000FF;
+   text-decoration: underline;
+}
+h1
+{
+   font-family: Arial;
+   font-size: 32px;
+   font-weight: bold;
+   font-style: normal;
+   text-decoration: none;
+   color: #000000;
+   background-color: transparent;
+   margin: 0px 0px 0px 0px;
+   padding: 0px 0px 0px 0px;
+   display: inline;
+}
+h2
+{
+   font-family: Arial;
+   font-size: 27px;
+   font-weight: bold;
+   font-style: normal;
+   text-decoration: none;
+   color: #000000;
+   background-color: transparent;
+   margin: 0px 0px 0px 0px;
+   padding: 0px 0px 0px 0px;
+   display: inline;
+}
+h3
+{
+   font-family: Arial;
+   font-size: 24px;
+   font-weight: normal;
+   font-style: normal;
+   text-decoration: none;
+   color: #000000;
+   background-color: transparent;
+   margin: 0px 0px 0px 0px;
+   padding: 0px 0px 0px 0px;
+   display: inline;
+}
+h4
+{
+   font-family: Arial;
+   font-size: 21px;
+   font-weight: normal;
+   font-style: italic;
+   text-decoration: none;
+   color: #000000;
+   background-color: transparent;
+   margin: 0px 0px 0px 0px;
+   padding: 0px 0px 0px 0px;
+   display: inline;
+}
+h5
+{
+   font-family: Arial;
+   font-size: 19px;
+   font-weight: normal;
+   font-style: normal;
+   text-decoration: none;
+   color: #000000;
+   background-color: transparent;
+   margin: 0px 0px 0px 0px;
+   padding: 0px 0px 0px 0px;
+   display: inline;
+}
+h6
+{
+   font-family: Arial;
+   font-size: 16px;
+   font-weight: normal;
+   font-style: normal;
+   text-decoration: none;
+   color: #000000;
+   background-color: transparent;
+   margin: 0px 0px 0px 0px;
+   padding: 0px 0px 0px 0px;
+   display: inline;
+}
+.CustomStyle
+{
+   font-family: "Courier New";
+   font-size: 16px;
+   font-weight: bold;
+   font-style: normal;
+   text-decoration: none;
+   color: #000080;
+   background-color: transparent;
+}
+
