@@ -14,7 +14,15 @@
                 new StyleBundle("~/Content/Start/css").Include(
                     "~/Content/Start/jquery.ui.all.css",
                     "~/Content/Start/jquery.ui.base.css",
-                    "~/Content/Start/jquery.ui.theme.css"));
+                    "~/Content/Start/jquery.ui.theme.css",
+                    "~/Content/Start/jquery.ui.base.css",
+                    "~/Content/Start/jquery.ui.theme.css",
+                    "~/Content/Start/jquery.ui.core.css",
+                    "~/Content/Start/jquery.ui.accordion.css",
+                    "~/Content/Start/jquery.ui.autocomplete.css",
+                    "~/Content/Start/jquery.ui.button.css",
+                    "~/Content/Start/jquery.ui.datepicker.css"));
+
             bundles.Add(
                 new ScriptBundle("~/bundles/scripts").Include(
                     "~/Scripts/jquery-1.11.1.min.js",
