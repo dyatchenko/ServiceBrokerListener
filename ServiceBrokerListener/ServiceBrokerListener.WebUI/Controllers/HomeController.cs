@@ -1,6 +1,4 @@
-﻿
-
-namespace ServiceBrokerListener.WebUI.Controllers
+﻿namespace ServiceBrokerListener.WebUI.Controllers
 {
     using Microsoft.AspNet.SignalR;
 
@@ -12,6 +10,12 @@ namespace ServiceBrokerListener.WebUI.Controllers
     public class HomeController : Controller
     {
         private readonly ITableRowRepository repo;
+
+        static HomeController()
+        {
+            var repo = (ITableRowRepository)DependencyResolver.Current.GetService(typeof(ITableRowRepository));
+            repo.TableChanged += RepoTableChanged;
+        }
 
         public HomeController(ITableRowRepository repo)
         {
@@ -46,10 +50,14 @@ namespace ServiceBrokerListener.WebUI.Controllers
                 repo.UpdateRow(row, col, value);
             }
 
-            var context = GlobalHost.ConnectionManager.GetHubContext<HomeHub>();
-            context.Clients.All.broadcastMessage(json);
-
             return "OK";
+        }
+
+        private static void RepoTableChanged(object sender, TableChangedEventArgs e)
+        {
+            var context = GlobalHost.ConnectionManager.GetHubContext<HomeHub>();
+            context.Clients.All.broadcastMessage(
+                string.Format("{{\"0\": {0}}}", e.GetChangesAsJson()));
         }
     }
 }

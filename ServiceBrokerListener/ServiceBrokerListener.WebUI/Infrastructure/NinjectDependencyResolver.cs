@@ -1,11 +1,9 @@
 ﻿
 namespace ServiceBrokerListener.WebUI.Infrastructure
 {
-    using System.Linq;
     using System.Web.Mvc;
     using System;
     using System.Collections.Generic;
-    using System.Web.UI.WebControls;
 
     using Moq;
     using Ninject;
@@ -61,6 +59,19 @@ namespace ServiceBrokerListener.WebUI.Infrastructure
                                 case 4: list[r].E = s; break;
                                 case 5: list[r].F = s; break;
                             }
+
+                            mock.Raise(
+                                mk => mk.TableChanged += null,
+                                new TableChangedEventArgs(
+                                    new[]
+                                        {
+                                            new TableChangedEventArgs.SingleChange
+                                                {
+                                                    Column = c,
+                                                    Row = r,
+                                                    NewValue = s
+                                                }
+                                        }));
                         });
             kernel.Bind<ITableRowRepository>().ToConstant(mock.Object);
         }
