@@ -434,7 +434,7 @@
 
         private const int COMMAND_TIMEOUT = 60000;
 
-        private static List<int> activeEntities = new List<int>(); 
+        private static readonly List<int> ActiveEntities = new List<int>(); 
 
         private Thread listenerThread;
 
@@ -500,6 +500,8 @@
 
         public event EventHandler<TableChangedEventArgs> TableChanged;
 
+        public event EventHandler NotificationProcessStopped;
+
         public SqlDependencyEx(
             string connectionString,
             string databaseName,
@@ -520,11 +522,11 @@
 
         public void Start()
         {
-            lock (activeEntities)
+            lock (ActiveEntities)
             {
-                if (activeEntities.Contains(this.Identity))
-                    throw new InvalidOperationException("An object with the same identity has already started.");
-                activeEntities.Add(this.Identity);
+                if (ActiveEntities.Contains(this.Identity))
+                    throw new InvalidOperationException("An object with the same identity has already been started.");
+                ActiveEntities.Add(this.Identity);
             }
 
             this.InstallNotification();
@@ -544,7 +546,7 @@
                     finally
                     {
                         Active = false;
-                        UninstallNotification();
+                        OnNotificationProcessStopped();
                     }
                 };
 
@@ -565,8 +567,8 @@
         {
             UninstallNotification();
 
-            lock (activeEntities)
-                if (activeEntities.Contains(Identity)) activeEntities.Remove(Identity);
+            lock (ActiveEntities)
+                if (ActiveEntities.Contains(Identity)) ActiveEntities.Remove(Identity);
 
             var thread = this.listenerThread;
             if ((thread == null) || (!thread.IsAlive))
@@ -755,6 +757,14 @@
             if (evnt == null) return;
 
             evnt.Invoke(this, new TableChangedEventArgs(message));
+        }
+
+        private void OnNotificationProcessStopped()
+        {
+            var evnt = NotificationProcessStopped;
+            if (evnt == null) return;
+
+            evnt.Invoke(this, EventArgs.Empty);
         }
     }
 }

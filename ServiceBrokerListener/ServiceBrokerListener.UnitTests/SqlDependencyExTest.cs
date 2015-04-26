@@ -189,6 +189,24 @@
         }
 
         [Test]
+        public void NotificationTypeTestWith10ChunkInserts()
+        {
+            NotificationTypeTest(10);
+        }
+
+        [Test]
+        public void NotificationTypeTestWith100ChunkInserts()
+        {
+            NotificationTypeTest(100);
+        }
+
+        [Test]
+        public void NotificationTypeTestWith1000ChunkInserts()
+        {
+            NotificationTypeTest(1000);
+        }
+
+        [Test]
         public void MainPermissionExceptionCheckTest()
         {
             ExecuteNonQuery("USE [TestDatabase] DENY CREATE PROCEDURE TO [TempUser];", MASTER_CONNECTION_STRING);
@@ -398,6 +416,76 @@
             Assert.AreEqual(changesCount, changesReceived);
         }
 
+        private static void NotificationTypeTest(int insertsCount)
+        {
+            NotificationTypeTest(insertsCount, SqlDependencyEx.NotificationTypes.Insert);
+            NotificationTypeTest(insertsCount, SqlDependencyEx.NotificationTypes.Delete);
+            NotificationTypeTest(insertsCount, SqlDependencyEx.NotificationTypes.Update);
+            NotificationTypeTest(
+                insertsCount,
+                SqlDependencyEx.NotificationTypes.Insert | SqlDependencyEx.NotificationTypes.Delete);
+            NotificationTypeTest(
+                insertsCount,
+                SqlDependencyEx.NotificationTypes.Insert | SqlDependencyEx.NotificationTypes.Update);
+            NotificationTypeTest(
+                insertsCount,
+                SqlDependencyEx.NotificationTypes.Delete | SqlDependencyEx.NotificationTypes.Update);
+        }
+
+        private static void NotificationTypeTest(int insertsCount, SqlDependencyEx.NotificationTypes testType)
+        {
+            int elementsInDetailsCount = 0;
+            int changesReceived = 0;
+            int expectedElementsInDetails = 0;
+
+            var notificationTypes = GetMembers(testType);
+            foreach (var temp in notificationTypes)
+            switch (temp)
+            {
+                case SqlDependencyEx.NotificationTypes.Insert:
+                    expectedElementsInDetails += insertsCount / 2;
+                    break;
+                case SqlDependencyEx.NotificationTypes.Update:
+                    expectedElementsInDetails += insertsCount;
+                    break;
+                case SqlDependencyEx.NotificationTypes.Delete:
+                    expectedElementsInDetails += insertsCount / 2;
+                    break;
+            }
+
+            using (SqlDependencyEx sqlDependency = new SqlDependencyEx(
+                        TEST_CONNECTION_STRING,
+                        TEST_DATABASE_NAME,
+                        TEST_TABLE_NAME, "temp", testType))
+            {
+                sqlDependency.TableChanged += (o, e) =>
+                {
+                    changesReceived++;
+
+                    if (e.Data == null) return;
+
+                    var inserted = e.Data.Element("inserted");
+                    var deleted = e.Data.Element("deleted");
+
+                    elementsInDetailsCount += inserted != null
+                                                  ? inserted.Elements("row").Count()
+                                                  : 0;
+                    elementsInDetailsCount += deleted != null
+                                                  ? deleted.Elements("row").Count()
+                                                  : 0;
+                };
+                sqlDependency.Start();
+
+                MakeChunkedInsertDeleteUpdate(insertsCount);
+
+                // Wait a little bit to receive all changes.
+                Thread.Sleep(1000);
+            }
+
+            Assert.AreEqual(expectedElementsInDetails, elementsInDetailsCount);
+            Assert.AreEqual(notificationTypes.Length, changesReceived);
+        }
+
         private static void DetailsTest(int insertsCount)
         {
             int elementsInDetailsCount = 0;
@@ -470,6 +558,16 @@
                 command.CommandTimeout = 60000;
                 command.ExecuteNonQuery();
             }
+        }
+
+        private static SqlDependencyEx.NotificationTypes[] GetMembers(SqlDependencyEx.NotificationTypes value)
+        {
+            return
+                Enum.GetValues(typeof(SqlDependencyEx.NotificationTypes))
+                    .Cast<int>()
+                    .Where(enumValue => enumValue != 0 && (enumValue & (int)value) == enumValue)
+                    .Cast<SqlDependencyEx.NotificationTypes>()
+                    .ToArray();
         }
     }
 }
