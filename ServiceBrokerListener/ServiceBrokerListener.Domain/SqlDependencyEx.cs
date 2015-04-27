@@ -764,7 +764,7 @@
             var evnt = NotificationProcessStopped;
             if (evnt == null) return;
 
-            evnt.Invoke(this, EventArgs.Empty);
+            evnt.BeginInvoke(this, EventArgs.Empty, null, null);
         }
     }
 }
