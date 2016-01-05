@@ -14,4 +14,4 @@ You can test it by yourself: http://sbl.azurewebsites.net
 
 # Licence
 
-MIT
+[MIT](LICENSE)
