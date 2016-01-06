@@ -25,6 +25,8 @@ You can test it by yourself: http://sbl.azurewebsites.net
     // the actual changed data in the XML format
     listener.Start();
     
+    // ... Your code is here 
+    
     // Don't forget to stop the listener somewhere!
     listener.Stop();
     ```
@@ -39,6 +41,9 @@ All you need to do is to create multiple listeners with different identities as 
     var listener2 = new SqlDependencyEx(connectionString, "YourDatabase", "YourTable2", identity: 2);
     
 # How to track UPDATEs only
+
+The `listenerType` constructor parameter configures `SqlDependencyEx` to fire an event for
+different notification types (can fire on INSERT, UPDATE, DELETE separately or together)
 
     var listener = new SqlDependencyEx(connectionString, "YourDatabase",
                  "YourTable1", listenerType: SqlDependencyEx.NotificationTypes.Update);
