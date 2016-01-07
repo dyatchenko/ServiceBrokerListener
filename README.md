@@ -10,6 +10,9 @@ You can test it by yourself: http://sbl.azurewebsites.net
     
     ```
     ALTER DATABASE test SET ENABLE_BROKER
+    
+    -- For SQL Express
+    ALTER AUTHORIZATION ON DATABASE::test TO userTest
     ```
     
 3. Use the class as in example below:
