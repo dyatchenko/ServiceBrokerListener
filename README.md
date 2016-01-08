@@ -53,4 +53,4 @@ different notification types (can fire on INSERT, UPDATE, DELETE separately or t
     
 # Licence
 
-[GNU GENERAL PUBLIC LICENSE](LICENSE)
+[MIT](LICENSE)
