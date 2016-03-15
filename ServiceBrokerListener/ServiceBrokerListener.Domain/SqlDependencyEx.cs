@@ -543,6 +543,10 @@
                                 OnTableChanged(message);
                         }
                     }
+                    catch
+                    {
+                        // ignored
+                    }
                     finally
                     {
                         Active = false;
