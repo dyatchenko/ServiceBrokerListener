@@ -1,5 +1,5 @@
 # ServiceBrokerListener
-Component which receives SQL Server table changes to your .net code.
+Component which receives SQL Server table changes into your .net code.
 
 You can test it by yourself: http://sbl.azurewebsites.net
 
