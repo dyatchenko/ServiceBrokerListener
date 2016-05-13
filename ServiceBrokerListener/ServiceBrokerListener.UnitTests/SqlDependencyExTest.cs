@@ -38,6 +38,10 @@
 
         private const string TEST_TABLE_NAME = "TestTable";
 
+        private const string TEST_TABLE_1_FULL_NAME = "temp.TestTable";
+
+        private const string TEST_TABLE_2_FULL_NAME = "temp2.TestTable";
+
         [SetUp]
         public void TestSetup()
         {
@@ -63,16 +67,22 @@
                 GRANT CREATE QUEUE  TO [TempUser];
                 GRANT REFERENCES ON CONTRACT::[DEFAULT] TO [TempUser]
                 GRANT SUBSCRIBE QUERY NOTIFICATIONS TO [TempUser];
-                GRANT CONTROL ON SCHEMA::[temp] TO [TempUser];  
+                GRANT CONTROL ON SCHEMA::[temp] TO [TempUser]
+                GRANT CONTROL ON SCHEMA::[temp2] TO [TempUser];  
                 ";
-            const string CreateTableScript = @"                
+            const string CreateTable1Script = @"                
                 CREATE SCHEMA Temp
-                    CREATE TABLE TestTable (TestField int, StrField NVARCHAR(MAX))";
-                
+                    CREATE TABLE TestTable (TestField int, StrField NVARCHAR(MAX));
+                ";
+            const string CreateTable2Script = @"
+                CREATE SCHEMA Temp2
+                    CREATE TABLE TestTable (TestField int, StrField NVARCHAR(MAX));";
+
             TestCleanup();
 
             ExecuteNonQuery(CreateDatabaseScript, MASTER_CONNECTION_STRING);
-            ExecuteNonQuery(CreateTableScript, ADMIN_TEST_CONNECTION_STRING);
+            ExecuteNonQuery(CreateTable1Script, ADMIN_TEST_CONNECTION_STRING);
+            ExecuteNonQuery(CreateTable2Script, ADMIN_TEST_CONNECTION_STRING);
             ExecuteNonQuery(CreateUserScript, MASTER_CONNECTION_STRING);
         }
 
@@ -341,6 +351,90 @@
             dep2.Dispose();
         }
 
+        [Test]
+        public void TwoTablesNotificationsTest()
+        {
+            int table1InsertsReceived = 0;
+            int table1DeletesReceived = 0;
+
+            int table2InsertsReceived = 0;
+            int table2DeletesReceived = 0;
+
+            using (var sqlDependencyFirstTable = new SqlDependencyEx(
+                           TEST_CONNECTION_STRING,
+                           "TestDatabase",
+                           "TestTable",
+                           "temp",
+                           SqlDependencyEx.NotificationTypes.Delete,
+                           true,
+                           0))
+            {
+
+                sqlDependencyFirstTable.TableChanged += (sender, args) =>
+                {
+                    if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+                    {
+                        table1DeletesReceived++;
+                    }
+
+                    if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+                    {
+                        table1InsertsReceived++;
+                    }
+                };
+
+                if (!sqlDependencyFirstTable.Active)
+                    sqlDependencyFirstTable.Start();
+
+                using (var sqlDependencySecondTable = new SqlDependencyEx(
+                                                   TEST_CONNECTION_STRING,
+                                                   "TestDatabase",
+                                                   "TestTable",
+                                                   "temp2",
+                                                   SqlDependencyEx.NotificationTypes.Insert,
+                                                   true,
+                                                   1))
+                {
+
+                    sqlDependencySecondTable.TableChanged += (sender, args) =>
+                    {
+                        if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+                        {
+                            table2DeletesReceived++;
+                        }
+
+                        if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+                        {
+                            table2InsertsReceived++;
+                        }
+                    };
+
+                    if (!sqlDependencySecondTable.Active)
+                        sqlDependencySecondTable.Start();
+
+                    MakeChunkedInsert(5, TEST_TABLE_1_FULL_NAME);
+                    MakeChunkedInsert(3, TEST_TABLE_2_FULL_NAME);
+
+                    DeleteFirstRow(TEST_TABLE_1_FULL_NAME);
+                    DeleteFirstRow(TEST_TABLE_1_FULL_NAME);
+                    DeleteFirstRow(TEST_TABLE_1_FULL_NAME);
+                    DeleteFirstRow(TEST_TABLE_1_FULL_NAME);
+
+                    DeleteFirstRow(TEST_TABLE_2_FULL_NAME);
+                    DeleteFirstRow(TEST_TABLE_2_FULL_NAME);
+
+                    // Wait for notification to complete
+                    Thread.Sleep(3000);
+                }
+            }
+
+            Assert.AreEqual(4, table1DeletesReceived);
+            Assert.AreEqual(0, table1InsertsReceived);
+
+            Assert.AreEqual(1, table2InsertsReceived);
+            Assert.AreEqual(0, table2DeletesReceived);
+        }
+
         public void ResourcesReleasabilityTest(int changesCount)
         {
             using (var sqlConnection = new SqlConnection(ADMIN_TEST_CONNECTION_STRING))
@@ -537,6 +631,31 @@
             ExecuteNonQuery(scriptResult.ToString(), TEST_CONNECTION_STRING);
             ExecuteNonQuery("UPDATE temp.TestTable SET StrField = NULL", TEST_CONNECTION_STRING);
             ExecuteNonQuery("DELETE FROM temp.TestTable", TEST_CONNECTION_STRING);
+        }
+
+        private static void MakeChunkedInsert(int chunkSize, string tableName = "temp.TestTable")
+        {
+            const string ScriptFormat = "INSERT INTO #TmpTbl VALUES({0}, N'{1}')\r\n";
+
+            // insert a unicode statement
+            StringBuilder scriptResult = new StringBuilder("SELECT 0 AS Number, N'юникод<>_1000001' AS Str INTO #TmpTbl\r\n");
+            for (int i = 1; i < chunkSize; i++) scriptResult.Append(string.Format(ScriptFormat, i, "юникод<>_" + i));
+
+            scriptResult.Append($"INSERT INTO {tableName} (TestField, StrField) SELECT * FROM #TmpTbl");
+            ExecuteNonQuery(scriptResult.ToString(), TEST_CONNECTION_STRING);
+        }
+
+        private static void DeleteFirstRow(string tableName = "temp.TestTable")
+        {
+            string script = $@"
+                WITH q AS
+                (
+                    SELECT TOP 1 *
+                    FROM {tableName}
+                )
+                DELETE FROM q";
+
+            ExecuteNonQuery(script, TEST_CONNECTION_STRING);
         }
 
         private static void MakeTableInsertDeleteChanges(int changesCount)
