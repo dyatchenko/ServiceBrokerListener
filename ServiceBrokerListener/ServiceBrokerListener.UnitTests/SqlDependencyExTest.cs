@@ -356,9 +356,13 @@
         {
             int table1InsertsReceived = 0;
             int table1DeletesReceived = 0;
+            int table1TotalNotifications = 0;
+            int table1TotalDeleted = 0;
 
             int table2InsertsReceived = 0;
             int table2DeletesReceived = 0;
+            int table2TotalNotifications = 0;
+            int table2TotalInserted = 0;
 
             using (var sqlDependencyFirstTable = new SqlDependencyEx(
                            TEST_CONNECTION_STRING,
@@ -375,12 +379,15 @@
                     if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
                     {
                         table1DeletesReceived++;
+                        table1TotalDeleted += args.Data.Element("deleted").Elements("row").Count();
                     }
 
                     if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
                     {
                         table1InsertsReceived++;
                     }
+
+                    table1TotalNotifications++;
                 };
 
                 if (!sqlDependencyFirstTable.Active)
@@ -406,7 +413,10 @@
                         if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
                         {
                             table2InsertsReceived++;
+                            table2TotalInserted += args.Data.Element("inserted").Elements("row").Count();
                         }
+
+                        table2TotalNotifications++;
                     };
 
                     if (!sqlDependencySecondTable.Active)
@@ -414,6 +424,7 @@
 
                     MakeChunkedInsert(5, TEST_TABLE_1_FULL_NAME);
                     MakeChunkedInsert(3, TEST_TABLE_2_FULL_NAME);
+                    MakeChunkedInsert(8, TEST_TABLE_2_FULL_NAME);
 
                     DeleteFirstRow(TEST_TABLE_1_FULL_NAME);
                     DeleteFirstRow(TEST_TABLE_1_FULL_NAME);
@@ -421,6 +432,12 @@
                     DeleteFirstRow(TEST_TABLE_1_FULL_NAME);
 
                     DeleteFirstRow(TEST_TABLE_2_FULL_NAME);
+                    DeleteFirstRow(TEST_TABLE_2_FULL_NAME);
+
+                    MakeChunkedInsert(1, TEST_TABLE_2_FULL_NAME);
+                    MakeChunkedInsert(1, TEST_TABLE_1_FULL_NAME);
+
+                    DeleteFirstRow(TEST_TABLE_1_FULL_NAME);
                     DeleteFirstRow(TEST_TABLE_2_FULL_NAME);
 
                     // Wait for notification to complete
@@ -428,11 +445,65 @@
                 }
             }
 
-            Assert.AreEqual(4, table1DeletesReceived);
+            Assert.AreEqual(5, table1DeletesReceived);
             Assert.AreEqual(0, table1InsertsReceived);
+            Assert.AreEqual(5, table1TotalNotifications);
+            Assert.AreEqual(5, table1TotalDeleted);
 
-            Assert.AreEqual(1, table2InsertsReceived);
+            Assert.AreEqual(3, table2InsertsReceived);
             Assert.AreEqual(0, table2DeletesReceived);
+            Assert.AreEqual(3, table2TotalNotifications);
+            Assert.AreEqual(12, table2TotalInserted);
+        }
+
+        [Test]
+        public void NullCharacterInsertTest()
+        {
+            int table1InsertsReceived = 0;
+            int table1DeletesReceived = 0;
+            int table1TotalNotifications = 0;
+            int table1TotalDeleted = 0;
+
+            using (var sqlDependencyFirstTable = new SqlDependencyEx(
+                           TEST_CONNECTION_STRING,
+                           "TestDatabase",
+                           "TestTable",
+                           "temp",
+                           SqlDependencyEx.NotificationTypes.Insert,
+                           true,
+                           0))
+            {
+
+                sqlDependencyFirstTable.TableChanged += (sender, args) =>
+                {
+                    if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+                    {
+                        table1DeletesReceived++;
+                    }
+
+                    if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+                    {
+                        table1InsertsReceived++;
+                    }
+
+                    table1TotalNotifications++;
+                };
+
+                if (!sqlDependencyFirstTable.Active)
+                    sqlDependencyFirstTable.Start();
+
+                MakeNullCharacterInsert();
+                MakeNullCharacterInsert();
+                MakeNullCharacterInsert();
+
+                // Wait for notification to complete
+                Thread.Sleep(3000);
+            }
+
+            Assert.AreEqual(0, table1DeletesReceived);
+            Assert.AreEqual(3, table1InsertsReceived);
+            Assert.AreEqual(3, table1TotalNotifications);
+            Assert.AreEqual(0, table1TotalDeleted);
         }
 
         public void ResourcesReleasabilityTest(int changesCount)
@@ -640,6 +711,17 @@
             // insert a unicode statement
             StringBuilder scriptResult = new StringBuilder("SELECT 0 AS Number, N'юникод<>_1000001' AS Str INTO #TmpTbl\r\n");
             for (int i = 1; i < chunkSize; i++) scriptResult.Append(string.Format(ScriptFormat, i, "юникод<>_" + i));
+
+            scriptResult.Append($"INSERT INTO {tableName} (TestField, StrField) SELECT * FROM #TmpTbl");
+            ExecuteNonQuery(scriptResult.ToString(), TEST_CONNECTION_STRING);
+        }
+
+        private static void MakeNullCharacterInsert(string tableName = "temp.TestTable")
+        {
+            const string ScriptFormat = "INSERT INTO #TmpTbl VALUES({0}, N'{1}')\r\n";
+
+            // insert a unicode statement
+            StringBuilder scriptResult = new StringBuilder("SELECT 0 AS Number, CONVERT(VARCHAR(MAX), 0x00) AS Str INTO #TmpTbl\r\n");
 
             scriptResult.Append($"INSERT INTO {tableName} (TestField, StrField) SELECT * FROM #TmpTbl");
             ExecuteNonQuery(scriptResult.ToString(), TEST_CONNECTION_STRING);

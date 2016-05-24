@@ -1,4 +1,7 @@
-﻿namespace ServiceBrokerListener.Domain
+﻿using System.IO;
+using System.Xml;
+
+namespace ServiceBrokerListener.Domain
 {
     using System;
     using System.Collections.Generic;
@@ -39,7 +42,7 @@
                 {
                     if (string.IsNullOrWhiteSpace(notificationMessage)) return null;
 
-                    return XElement.Parse(notificationMessage);
+                    return ReadXDocumentWithInvalidCharacters(notificationMessage);
                 }
             }
 
@@ -47,14 +50,37 @@
             {
                 get
                 {
-                    return Data.Element(INSERTED_TAG) != null
-                               ? Data.Element(DELETED_TAG) != null
+                    return Data?.Element(INSERTED_TAG) != null
+                               ? Data?.Element(DELETED_TAG) != null
                                      ? NotificationTypes.Update
                                      : NotificationTypes.Insert
-                               : Data.Element(DELETED_TAG) != null
+                               : Data?.Element(DELETED_TAG) != null
                                      ? NotificationTypes.Delete
                                      : NotificationTypes.None;
                 }
+            }
+
+            /// <summary>
+            /// Converts an xml string into XElement with no invalid characters check.
+            /// https://paulselles.wordpress.com/2013/07/03/parsing-xml-with-invalid-characters-in-c-2/
+            /// </summary>
+            /// <param name="xml">The input string.</param>
+            /// <returns>The result XElement.</returns>
+            private static XElement ReadXDocumentWithInvalidCharacters(string xml)
+            {
+                XDocument xDocument = null;
+
+                XmlReaderSettings xmlReaderSettings = new XmlReaderSettings {CheckCharacters = false};
+
+                using (var stream = new StringReader(xml))
+                using (XmlReader xmlReader = XmlReader.Create(stream, xmlReaderSettings))
+                {
+                    // Load our XDocument
+                    xmlReader.MoveToContent();
+                    xDocument = XDocument.Load(xmlReader);
+                }
+
+                return xDocument.Root;
             }
         }
 
