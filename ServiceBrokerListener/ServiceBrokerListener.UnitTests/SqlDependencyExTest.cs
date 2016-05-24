@@ -42,6 +42,8 @@
 
         private const string TEST_TABLE_2_FULL_NAME = "temp2.TestTable";
 
+        private const string TEST_TABLE_3_FULL_NAME = "temp.Order";
+
         [SetUp]
         public void TestSetup()
         {
@@ -70,19 +72,23 @@
                 GRANT CONTROL ON SCHEMA::[temp] TO [TempUser]
                 GRANT CONTROL ON SCHEMA::[temp2] TO [TempUser];  
                 ";
-            const string CreateTable1Script = @"                
+            const string CreateTable1Script = @"
                 CREATE SCHEMA Temp
                     CREATE TABLE TestTable (TestField int, StrField NVARCHAR(MAX));
                 ";
             const string CreateTable2Script = @"
                 CREATE SCHEMA Temp2
                     CREATE TABLE TestTable (TestField int, StrField NVARCHAR(MAX));";
+            const string CreateTable3Script = @"
+                CREATE TABLE [temp].[Order] (TestField int, StrField NVARCHAR(MAX));
+                ";
 
             TestCleanup();
 
             ExecuteNonQuery(CreateDatabaseScript, MASTER_CONNECTION_STRING);
             ExecuteNonQuery(CreateTable1Script, ADMIN_TEST_CONNECTION_STRING);
             ExecuteNonQuery(CreateTable2Script, ADMIN_TEST_CONNECTION_STRING);
+            ExecuteNonQuery(CreateTable3Script, ADMIN_TEST_CONNECTION_STRING);
             ExecuteNonQuery(CreateUserScript, MASTER_CONNECTION_STRING);
         }
 
@@ -495,6 +501,56 @@
                 MakeNullCharacterInsert();
                 MakeNullCharacterInsert();
                 MakeNullCharacterInsert();
+
+                // Wait for notification to complete
+                Thread.Sleep(3000);
+            }
+
+            Assert.AreEqual(0, table1DeletesReceived);
+            Assert.AreEqual(3, table1InsertsReceived);
+            Assert.AreEqual(3, table1TotalNotifications);
+            Assert.AreEqual(0, table1TotalDeleted);
+        }
+
+        [Test]
+        public void SpecialTableNameWithoutSquareBracketsTest()
+        {
+            int table1InsertsReceived = 0;
+            int table1DeletesReceived = 0;
+            int table1TotalNotifications = 0;
+            int table1TotalDeleted = 0;
+
+            using (var sqlDependencyFirstTable = new SqlDependencyEx(
+                           TEST_CONNECTION_STRING,
+                           "TestDatabase",
+                           "Order",
+                           "temp",
+                           SqlDependencyEx.NotificationTypes.Insert,
+                           true,
+                           0))
+            {
+
+                sqlDependencyFirstTable.TableChanged += (sender, args) =>
+                {
+                    if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+                    {
+                        table1DeletesReceived++;
+                    }
+
+                    if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+                    {
+                        table1InsertsReceived++;
+                    }
+
+                    table1TotalNotifications++;
+                };
+
+                if (!sqlDependencyFirstTable.Active)
+                    sqlDependencyFirstTable.Start();
+
+                MakeNullCharacterInsert("[temp].[Order]");
+                MakeNullCharacterInsert("[temp].[Order]");
+                MakeNullCharacterInsert("[temp].[Order]");
 
                 // Wait for notification to complete
                 Thread.Sleep(3000);
