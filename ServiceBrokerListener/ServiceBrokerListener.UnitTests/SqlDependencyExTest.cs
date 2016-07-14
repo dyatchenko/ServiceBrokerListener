@@ -670,6 +670,12 @@
             Assert.AreEqual(0, table1TotalDeleted);
         }
 
+        [Test]
+        public void NotificationWithoutDetailsTest()
+        {
+            NoDetailsTest(10);
+        }
+
         public void ResourcesReleasabilityTest(int changesCount)
         {
             using (var sqlConnection = new SqlConnection(ADMIN_TEST_CONNECTION_STRING))
@@ -851,6 +857,37 @@
 
             Assert.AreEqual(insertsCount * 2, elementsInDetailsCount);
             Assert.AreEqual(3, changesReceived);
+        }
+
+        private void NoDetailsTest(
+            int changesCount,
+            int changesDelayInSec = 0,
+            string connStr = TEST_CONNECTION_STRING)
+        {
+            int changesReceived = 0;
+
+            using (SqlDependencyEx sqlDependency = new SqlDependencyEx(
+                        connStr,
+                        TEST_DATABASE_NAME,
+                        TEST_TABLE_NAME, "temp", receiveDetails: false))
+            {
+                sqlDependency.TableChanged += (o, e) =>
+                {
+                    Assert.AreEqual(SqlDependencyEx.NotificationTypes.None, e.NotificationType);
+                    Assert.AreEqual(0, e.Data.Elements().Count());
+
+                    changesReceived++;
+                };
+                sqlDependency.Start();
+
+                Thread.Sleep(changesDelayInSec * 1000);
+                MakeTableInsertDeleteChanges(changesCount);
+
+                // Wait a little bit to receive all changes.
+                Thread.Sleep(1000);
+            }
+
+            Assert.AreEqual(changesCount, changesReceived);
         }
 
         private static void MakeChunkedInsertDeleteUpdate(int changesCount)
