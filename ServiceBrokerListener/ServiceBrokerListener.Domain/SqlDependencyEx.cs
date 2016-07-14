@@ -141,7 +141,7 @@ namespace ServiceBrokerListener.Domain
                             
                             SET @select = STUFF((SELECT '','' + ''['' + COLUMN_NAME + '']''
 						                         FROM INFORMATION_SCHEMA.COLUMNS
-						                         WHERE TABLE_NAME = ''{5}'' AND TABLE_CATALOG = ''{0}''
+						                         WHERE DATA_TYPE NOT IN  (''text'',''ntext'',''image'') AND TABLE_NAME = ''{5}'' AND TABLE_CATALOG = ''{0}''
 						                         FOR XML PATH ('''')
 						                         ), 1, 1, '''')
                             SET @sqlInserted = 

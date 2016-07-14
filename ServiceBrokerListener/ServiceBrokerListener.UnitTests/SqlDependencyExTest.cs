@@ -85,6 +85,9 @@
             const string CreateTable4Script = @"
                 CREATE TABLE [temp].[Order2] ([Order] int, StrField NVARCHAR(MAX));
                 ";
+            const string CreateTable5Script = @"
+                CREATE TABLE [temp].[Order3] (TestField int, StrField text);
+                ";
 
             TestCleanup();
 
@@ -93,6 +96,7 @@
             ExecuteNonQuery(CreateTable2Script, ADMIN_TEST_CONNECTION_STRING);
             ExecuteNonQuery(CreateTable3Script, ADMIN_TEST_CONNECTION_STRING);
             ExecuteNonQuery(CreateTable4Script, ADMIN_TEST_CONNECTION_STRING);
+            ExecuteNonQuery(CreateTable5Script, ADMIN_TEST_CONNECTION_STRING);
             ExecuteNonQuery(CreateUserScript, MASTER_CONNECTION_STRING);
         }
 
@@ -605,6 +609,56 @@
                 MakeNullCharacterInsert("[temp].[Order2]", "[Order]");
                 MakeNullCharacterInsert("[temp].[Order2]", "[Order]");
                 MakeNullCharacterInsert("[temp].[Order2]", "[Order]");
+
+                // Wait for notification to complete
+                Thread.Sleep(3000);
+            }
+
+            Assert.AreEqual(0, table1DeletesReceived);
+            Assert.AreEqual(3, table1InsertsReceived);
+            Assert.AreEqual(3, table1TotalNotifications);
+            Assert.AreEqual(0, table1TotalDeleted);
+        }
+
+        [Test]
+        public void UnsupportedFieldTypeTest()
+        {
+            int table1InsertsReceived = 0;
+            int table1DeletesReceived = 0;
+            int table1TotalNotifications = 0;
+            int table1TotalDeleted = 0;
+
+            using (var sqlDependencyFirstTable = new SqlDependencyEx(
+                           TEST_CONNECTION_STRING,
+                           "TestDatabase",
+                           "Order3",
+                           "temp",
+                           SqlDependencyEx.NotificationTypes.Insert,
+                           true,
+                           0))
+            {
+
+                sqlDependencyFirstTable.TableChanged += (sender, args) =>
+                {
+                    if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+                    {
+                        table1DeletesReceived++;
+                    }
+
+                    if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+                    {
+                        table1InsertsReceived++;
+                    }
+
+                    table1TotalNotifications++;
+                };
+
+                if (!sqlDependencyFirstTable.Active)
+                    sqlDependencyFirstTable.Start();
+
+                MakeNullCharacterInsert("[temp].[Order3]");
+                MakeNullCharacterInsert("[temp].[Order3]");
+                MakeNullCharacterInsert("[temp].[Order3]");
 
                 // Wait for notification to complete
                 Thread.Sleep(3000);
