@@ -82,6 +82,9 @@
             const string CreateTable3Script = @"
                 CREATE TABLE [temp].[Order] (TestField int, StrField NVARCHAR(MAX));
                 ";
+            const string CreateTable4Script = @"
+                CREATE TABLE [temp].[Order2] ([Order] int, StrField NVARCHAR(MAX));
+                ";
 
             TestCleanup();
 
@@ -89,6 +92,7 @@
             ExecuteNonQuery(CreateTable1Script, ADMIN_TEST_CONNECTION_STRING);
             ExecuteNonQuery(CreateTable2Script, ADMIN_TEST_CONNECTION_STRING);
             ExecuteNonQuery(CreateTable3Script, ADMIN_TEST_CONNECTION_STRING);
+            ExecuteNonQuery(CreateTable4Script, ADMIN_TEST_CONNECTION_STRING);
             ExecuteNonQuery(CreateUserScript, MASTER_CONNECTION_STRING);
         }
 
@@ -562,6 +566,56 @@
             Assert.AreEqual(0, table1TotalDeleted);
         }
 
+        [Test]
+        public void SpecialFieldNameWithoutSquareBracketsTest()
+        {
+            int table1InsertsReceived = 0;
+            int table1DeletesReceived = 0;
+            int table1TotalNotifications = 0;
+            int table1TotalDeleted = 0;
+
+            using (var sqlDependencyFirstTable = new SqlDependencyEx(
+                           TEST_CONNECTION_STRING,
+                           "TestDatabase",
+                           "Order2",
+                           "temp",
+                           SqlDependencyEx.NotificationTypes.Insert,
+                           true,
+                           0))
+            {
+
+                sqlDependencyFirstTable.TableChanged += (sender, args) =>
+                {
+                    if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+                    {
+                        table1DeletesReceived++;
+                    }
+
+                    if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+                    {
+                        table1InsertsReceived++;
+                    }
+
+                    table1TotalNotifications++;
+                };
+
+                if (!sqlDependencyFirstTable.Active)
+                    sqlDependencyFirstTable.Start();
+
+                MakeNullCharacterInsert("[temp].[Order2]", "[Order]");
+                MakeNullCharacterInsert("[temp].[Order2]", "[Order]");
+                MakeNullCharacterInsert("[temp].[Order2]", "[Order]");
+
+                // Wait for notification to complete
+                Thread.Sleep(3000);
+            }
+
+            Assert.AreEqual(0, table1DeletesReceived);
+            Assert.AreEqual(3, table1InsertsReceived);
+            Assert.AreEqual(3, table1TotalNotifications);
+            Assert.AreEqual(0, table1TotalDeleted);
+        }
+
         public void ResourcesReleasabilityTest(int changesCount)
         {
             using (var sqlConnection = new SqlConnection(ADMIN_TEST_CONNECTION_STRING))
@@ -772,14 +826,12 @@
             ExecuteNonQuery(scriptResult.ToString(), TEST_CONNECTION_STRING);
         }
 
-        private static void MakeNullCharacterInsert(string tableName = "temp.TestTable")
+        private static void MakeNullCharacterInsert(string tableName = "temp.TestTable", string firstFieldName = "TestField", string secondFieldName = "StrField")
         {
-            const string ScriptFormat = "INSERT INTO #TmpTbl VALUES({0}, N'{1}')\r\n";
-
             // insert a unicode statement
             StringBuilder scriptResult = new StringBuilder("SELECT 0 AS Number, CONVERT(VARCHAR(MAX), 0x00) AS Str INTO #TmpTbl\r\n");
 
-            scriptResult.Append($"INSERT INTO {tableName} (TestField, StrField) SELECT * FROM #TmpTbl");
+            scriptResult.Append($"INSERT INTO {tableName} ({firstFieldName}, {secondFieldName}) SELECT * FROM #TmpTbl");
             ExecuteNonQuery(scriptResult.ToString(), TEST_CONNECTION_STRING);
         }
 

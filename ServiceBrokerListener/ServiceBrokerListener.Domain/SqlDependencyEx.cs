@@ -139,7 +139,7 @@ namespace ServiceBrokerListener.Domain
                             
                             SET @triggerStatement = N''{3}''
                             
-                            SET @select = STUFF((SELECT '','' + COLUMN_NAME
+                            SET @select = STUFF((SELECT '','' + ''['' + COLUMN_NAME + '']''
 						                         FROM INFORMATION_SCHEMA.COLUMNS
 						                         WHERE TABLE_NAME = ''{5}'' AND TABLE_CATALOG = ''{0}''
 						                         FOR XML PATH ('''')
