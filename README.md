@@ -43,6 +43,20 @@ All you need to do is to create multiple listeners with different identities as 
     var listener1 = new SqlDependencyEx(connectionString, "YourDatabase", "YourTable1", identity: 1);
     var listener2 = new SqlDependencyEx(connectionString, "YourDatabase", "YourTable2", identity: 2);
     
+# How to use in multiple apps
+
+You must create listeners with **unique** identities for each app. So, only one listener with a specific identity should exist at the moment. This is made in order to make sure that resources are cleaned up. For more information and best practices see @cdfell [comment](https://github.com/dyatchenko/ServiceBrokerListener/issues/29#issuecomment-241826532).
+
+Application 1:
+
+    // identities are different
+    var listener = new SqlDependencyEx(connectionString, "YourDatabase", "YourTable", identity: 1);
+    
+Application 2:
+
+    // identities are different
+    var listener = new SqlDependencyEx(connectionString, "YourDatabase", "YourTable", identity: 2);
+    
 # How to track UPDATEs only
 
 The `listenerType` constructor parameter configures `SqlDependencyEx` to fire an event for
