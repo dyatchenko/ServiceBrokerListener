@@ -45,7 +45,7 @@ All you need to do is to create multiple listeners with different identities as 
     
 # How to use in multiple apps
 
-You must create listeners with **unique** identities for each app. So, only one listener with a specific identity should exist at the moment. This is made in order to make sure that resources are cleaned up. For more information and best practices see @cdfell [comment](https://github.com/dyatchenko/ServiceBrokerListener/issues/29#issuecomment-241826532) and [this](https://github.com/dyatchenko/ServiceBrokerListener/issues/29#issuecomment-241943608) answer.
+You **must** create listeners with **unique** identities for each app. So, only one listener with a specific identity should exist at the moment. This is made in order to make sure that resources are cleaned up. For more information and best practices see @cdfell [comment](https://github.com/dyatchenko/ServiceBrokerListener/issues/29#issuecomment-241826532) and [this](https://github.com/dyatchenko/ServiceBrokerListener/issues/29#issuecomment-241943608) answer.
 
 Application 1:
 
