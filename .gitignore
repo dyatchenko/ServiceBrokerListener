@@ -3,3 +3,7 @@
 ################################################################################
 
 /ServiceBrokerListener/ServiceBrokerListener.Domain/obj/Debug
+/ServiceBrokerListener/.vs/config
+/ServiceBrokerListener/ServiceBrokerListener.UnitTests/obj/Debug
+/ServiceBrokerListener/ServiceBrokerListener.WebUI
+/ServiceBrokerListener/.vs/ServiceBrokerListener/v14
