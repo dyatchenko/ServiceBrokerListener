@@ -157,7 +157,7 @@ namespace ServiceBrokerListener.Domain
                             SET @triggerStatement = REPLACE(@triggerStatement
                                                      , ''%deleted_select_statement%'', @sqlDeleted)
 
-                            EXEC sp_executeSql @triggerStatement
+                            EXEC sp_executesql @triggerStatement
                         END
                         ')
                 END
