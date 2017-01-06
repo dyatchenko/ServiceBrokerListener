@@ -1,9 +1,7 @@
 /ServiceBrokerListener/ServiceBrokerListener.Domain.Core/.vs/*.dg
 /ServiceBrokerListener/ServiceBrokerListener.Domain.Core/.vs/ServiceBrokerListener.Domain.Core/v14/*.suo
-/ServiceBrokerListener/ServiceBrokerListener/ServiceBrokerListener.Domain.Core/obj/
-/ServiceBrokerListener/ServiceBrokerListener/ServiceBrokerListener.Domain.Core/bin/
-/ServiceBrokerListener/ServiceBrokerListener/ServiceBrokerListener.UnitTests.Core/obj/
-/ServiceBrokerListener/ServiceBrokerListener/ServiceBrokerListener.UnitTests.Core/bin/
-/ServiceBrokerListener/ServiceBrokerListener/packages/
+bin/
+obj/
+packages/
 *.dg
 *.suo
