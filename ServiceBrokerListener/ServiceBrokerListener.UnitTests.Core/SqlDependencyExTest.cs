@@ -3,6 +3,7 @@ using System;
 using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using NUnit.Framework;
@@ -148,84 +149,98 @@ namespace ServiceBrokerListener.UnitTests
     public void NotificationTestWith10ChangesAnd10SecDelay()
     {
       NotificationTest(10, 10);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void NotificationTestWith10ChangesAnd60SecDelay()
     {
       NotificationTest(10, 60);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void NotificationTestWith10Changes()
     {
       NotificationTest(10);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void NotificationTestWith100Changes()
     {
       NotificationTest(100);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void NotificationTestWith1000Changes()
     {
       NotificationTest(100);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void ResourcesReleasabilityTestWith1000Changes()
     {
       ResourcesReleasabilityTest(100);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void ResourcesReleasabilityTestWith100Changes()
     {
       ResourcesReleasabilityTest(100);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void ResourcesReleasabilityTestWith10Changes()
     {
       ResourcesReleasabilityTest(10);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void DetailsTestWith10ChunkInserts()
     {
       DetailsTest(10);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void DetailsTestWith100ChunkInserts()
     {
       DetailsTest(100);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void DetailsTestWith1000ChunkInserts()
     {
       DetailsTest(1000);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void NotificationTypeTestWith10ChunkInserts()
     {
       NotificationTypeTest(10);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void NotificationTypeTestWith100ChunkInserts()
     {
       NotificationTypeTest(100);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void NotificationTypeTestWith1000ChunkInserts()
     {
       NotificationTypeTest(1000);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
@@ -272,6 +287,7 @@ namespace ServiceBrokerListener.UnitTests
         TestDatabaseName,
         TestTableName,
         "temp")) test.Start();
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
@@ -302,6 +318,7 @@ namespace ServiceBrokerListener.UnitTests
 
       // Service broker supposed to be configured automatically with MASTER connection string.
       NotificationTest(10, connStr: MasterConnectionString);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
@@ -331,6 +348,7 @@ namespace ServiceBrokerListener.UnitTests
 
       // Make sure db has no any dependency objects.
       Assert.AreEqual(0, getDbDepCount());
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
@@ -370,6 +388,7 @@ namespace ServiceBrokerListener.UnitTests
 
       dep1.Dispose();
       dep2.Dispose();
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
@@ -475,6 +494,7 @@ namespace ServiceBrokerListener.UnitTests
       Assert.AreEqual(0, table2DeletesReceived);
       Assert.AreEqual(3, table2TotalNotifications);
       Assert.AreEqual(12, table2TotalInserted);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
@@ -525,6 +545,7 @@ namespace ServiceBrokerListener.UnitTests
       Assert.AreEqual(3, table1InsertsReceived);
       Assert.AreEqual(3, table1TotalNotifications);
       Assert.AreEqual(0, table1TotalDeleted);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
@@ -575,6 +596,7 @@ namespace ServiceBrokerListener.UnitTests
       Assert.AreEqual(3, table1InsertsReceived);
       Assert.AreEqual(3, table1TotalNotifications);
       Assert.AreEqual(0, table1TotalDeleted);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
@@ -625,6 +647,7 @@ namespace ServiceBrokerListener.UnitTests
       Assert.AreEqual(3, table1InsertsReceived);
       Assert.AreEqual(3, table1TotalNotifications);
       Assert.AreEqual(0, table1TotalDeleted);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
@@ -675,12 +698,14 @@ namespace ServiceBrokerListener.UnitTests
       Assert.AreEqual(3, table1InsertsReceived);
       Assert.AreEqual(3, table1TotalNotifications);
       Assert.AreEqual(0, table1TotalDeleted);
+      Console.WriteLine(GetCaller());
     }
 
     [Test]
     public void NotificationWithoutDetailsTest()
     {
       NoDetailsTest(10);
+      Console.WriteLine(GetCaller());
     }
 
     public void ResourcesReleasabilityTest(int changesCount)
@@ -976,6 +1001,11 @@ namespace ServiceBrokerListener.UnitTests
           .Where(enumValue => enumValue != 0 && (enumValue & (int) value) == enumValue)
           .Cast<SqlDependencyEx.NotificationTypes>()
           .ToArray();
+    }
+
+    public static string GetCaller([CallerMemberName] string caller = null)
+    {
+      return caller;
     }
   }
 }

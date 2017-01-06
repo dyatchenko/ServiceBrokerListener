@@ -2,4 +2,7 @@
 /ServiceBrokerListener/ServiceBrokerListener.Domain.Core/.vs/ServiceBrokerListener.Domain.Core/v14/*.suo
 /ServiceBrokerListener/ServiceBrokerListener.Domain.Core/src/ServiceBrokerListener.Domain.Core/obj
 /ServiceBrokerListener/ServiceBrokerListener.Domain.Core/src/ServiceBrokerListener.Domain.Core/bin
+/ServiceBrokerListener/ServiceBrokerListener/packages
 *.dg
+*.suo
+*.suo
