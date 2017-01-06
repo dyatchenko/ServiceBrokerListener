@@ -1,0 +1,1 @@
+C:\Projects\ServiceBrokerListener\ServiceBrokerListener\ServiceBrokerListener.UnitTests\obj\Debug\ServiceBrokerListener.UnitTests.csprojResolveAssemblyReference.cache

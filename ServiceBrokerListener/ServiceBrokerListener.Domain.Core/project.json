@@ -1,10 +1,13 @@
 {
+  "title": "ServiceBrokerListener.Domain.Core",
   "version": "1.0.0-*",
 
   "dependencies": {
     "NETStandard.Library": "1.6.0",
     "System.Data.SqlClient": "4.1.0",
-    "System.Threading.Thread": "4.0.0"
+    "System.Threading.Thread": "4.0.0",
+    "System.Threading.ThreadPool": "4.0.10",
+    "System.Xml.ReaderWriter": "4.3.0"
   },
 
   "frameworks": {

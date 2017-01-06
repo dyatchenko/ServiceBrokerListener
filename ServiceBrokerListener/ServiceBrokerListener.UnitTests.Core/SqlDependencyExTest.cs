@@ -1,0 +1,981 @@
+﻿using ServiceBrokerListener.Domain.Core;
+using System;
+using System.Data;
+using System.Data.SqlClient;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using NUnit.Framework;
+
+namespace ServiceBrokerListener.UnitTests
+{
+  /// <summary>
+  /// TODO: 
+  /// 1. Performance test.
+  /// 2. Check strange behavior.
+  /// </summary>
+  [TestFixture]
+  public class SqlDependencyExTest
+  {
+    private const string MasterConnectionString =
+      "Data Source=(local);Initial Catalog=master;Integrated Security=True";
+
+    private const string TestConnectionString =
+      "Data Source=(local);Initial Catalog=TestDatabase;User Id=TempLogin;Password=8fdKJl3$nlNv3049jsKK;";
+
+    private const string AdminTestConnectionString =
+      "Data Source=(local);Initial Catalog=TestDatabase;Integrated Security=True";
+
+    private const string InsertFormat =
+      "USE [TestDatabase] INSERT INTO temp.[TestTable] (TestField) VALUES({0})";
+
+    private const string RemoveFormat =
+      "USE [TestDatabase] DELETE FROM temp.[TestTable] WHERE TestField = {0}";
+
+    private const string TestDatabaseName = "TestDatabase";
+
+    private const string TestTableName = "TestTable";
+
+    private const string TestTable1FullName = "temp.TestTable";
+
+    private const string TestTable2FullName = "temp2.TestTable";
+
+    private const string TestTable3FullName = "temp.Order";
+
+    [SetUp]
+    public void TestSetup()
+    {
+      const string createDatabaseScript = @"
+                CREATE DATABASE TestDatabase;
+
+                ALTER DATABASE [TestDatabase] SET SINGLE_USER WITH ROLLBACK IMMEDIATE
+                ALTER DATABASE [TestDatabase] SET ENABLE_BROKER; 
+                ALTER DATABASE [TestDatabase] SET MULTI_USER WITH ROLLBACK IMMEDIATE
+
+                -- FOR SQL Express
+                ALTER AUTHORIZATION ON DATABASE::[TestDatabase] TO [sa]
+                ALTER DATABASE [TestDatabase] SET TRUSTWORTHY ON; ";
+      const string createUserScript = @"
+                CREATE LOGIN TempLogin 
+                WITH PASSWORD = '8fdKJl3$nlNv3049jsKK', DEFAULT_DATABASE=TestDatabase;
+                
+                USE [TestDatabase];
+                CREATE USER TempUser FOR LOGIN TempLogin;
+
+                GRANT CREATE PROCEDURE TO [TempUser];
+                GRANT CREATE SERVICE TO [TempUser];
+                GRANT CREATE QUEUE  TO [TempUser];
+                GRANT REFERENCES ON CONTRACT::[DEFAULT] TO [TempUser]
+                GRANT SUBSCRIBE QUERY NOTIFICATIONS TO [TempUser];
+                GRANT CONTROL ON SCHEMA::[temp] TO [TempUser]
+                GRANT CONTROL ON SCHEMA::[temp2] TO [TempUser];  
+                ";
+      const string createTable1Script = @"
+                CREATE SCHEMA Temp
+                    CREATE TABLE TestTable (TestField int, StrField NVARCHAR(MAX));
+                ";
+      const string createTable2Script = @"
+                CREATE SCHEMA Temp2
+                    CREATE TABLE TestTable (TestField int, StrField NVARCHAR(MAX));";
+      const string createTable3Script = @"
+                CREATE TABLE [temp].[Order] (TestField int, StrField NVARCHAR(MAX));
+                ";
+      const string createTable4Script = @"
+                CREATE TABLE [temp].[Order2] ([Order] int, StrField NVARCHAR(MAX));
+                ";
+      const string createTable5Script = @"
+                CREATE TABLE [temp].[Order3] (TestField int, StrField text);
+                ";
+
+      TestCleanup();
+
+      ExecuteNonQuery(createDatabaseScript, MasterConnectionString);
+      ExecuteNonQuery(createTable1Script, AdminTestConnectionString);
+      ExecuteNonQuery(createTable2Script, AdminTestConnectionString);
+      ExecuteNonQuery(createTable3Script, AdminTestConnectionString);
+      ExecuteNonQuery(createTable4Script, AdminTestConnectionString);
+      ExecuteNonQuery(createTable5Script, AdminTestConnectionString);
+      ExecuteNonQuery(createUserScript, MasterConnectionString);
+    }
+
+    [TearDown]
+    public void TestCleanup()
+    {
+      const string dropTestDatabaseScript = @"
+                IF (EXISTS(select * from sys.databases where name='TestDatabase'))
+                BEGIN
+                    ALTER DATABASE [TestDatabase] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+                    DROP DATABASE [TestDatabase]
+                END
+                IF (EXISTS(select * from master.dbo.syslogins where name = 'TempLogin'))
+                BEGIN
+                    DECLARE @loginNameToDrop sysname
+                    SET @loginNameToDrop = 'TempLogin';
+
+                    DECLARE sessionsToKill CURSOR FAST_FORWARD FOR
+                        SELECT session_id
+                        FROM sys.dm_exec_sessions
+                        WHERE login_name = @loginNameToDrop
+                    OPEN sessionsToKill
+                    
+                    DECLARE @sessionId INT
+                    DECLARE @statement NVARCHAR(200)
+                    
+                    FETCH NEXT FROM sessionsToKill INTO @sessionId
+                    
+                    WHILE @@FETCH_STATUS = 0
+                    BEGIN
+                        PRINT 'Killing session ' + CAST(@sessionId AS NVARCHAR(20)) + ' for login ' + @loginNameToDrop
+                    
+                        SET @statement = 'KILL ' + CAST(@sessionId AS NVARCHAR(20))
+                        EXEC sp_executesql @statement
+                    
+                        FETCH NEXT FROM sessionsToKill INTO @sessionId
+                    END
+                    
+                    CLOSE sessionsToKill
+                    DEALLOCATE sessionsToKill
+
+                    PRINT 'Dropping login ' + @loginNameToDrop
+                    SET @statement = 'DROP LOGIN [' + @loginNameToDrop + ']'
+                    EXEC sp_executesql @statement
+                END
+                ";
+      ExecuteNonQuery(dropTestDatabaseScript, MasterConnectionString);
+    }
+
+    [Test]
+    public void NotificationTestWith10ChangesAnd10SecDelay()
+    {
+      NotificationTest(10, 10);
+    }
+
+    [Test]
+    public void NotificationTestWith10ChangesAnd60SecDelay()
+    {
+      NotificationTest(10, 60);
+    }
+
+    [Test]
+    public void NotificationTestWith10Changes()
+    {
+      NotificationTest(10);
+    }
+
+    [Test]
+    public void NotificationTestWith100Changes()
+    {
+      NotificationTest(100);
+    }
+
+    [Test]
+    public void NotificationTestWith1000Changes()
+    {
+      NotificationTest(100);
+    }
+
+    [Test]
+    public void ResourcesReleasabilityTestWith1000Changes()
+    {
+      ResourcesReleasabilityTest(100);
+    }
+
+    [Test]
+    public void ResourcesReleasabilityTestWith100Changes()
+    {
+      ResourcesReleasabilityTest(100);
+    }
+
+    [Test]
+    public void ResourcesReleasabilityTestWith10Changes()
+    {
+      ResourcesReleasabilityTest(10);
+    }
+
+    [Test]
+    public void DetailsTestWith10ChunkInserts()
+    {
+      DetailsTest(10);
+    }
+
+    [Test]
+    public void DetailsTestWith100ChunkInserts()
+    {
+      DetailsTest(100);
+    }
+
+    [Test]
+    public void DetailsTestWith1000ChunkInserts()
+    {
+      DetailsTest(1000);
+    }
+
+    [Test]
+    public void NotificationTypeTestWith10ChunkInserts()
+    {
+      NotificationTypeTest(10);
+    }
+
+    [Test]
+    public void NotificationTypeTestWith100ChunkInserts()
+    {
+      NotificationTypeTest(100);
+    }
+
+    [Test]
+    public void NotificationTypeTestWith1000ChunkInserts()
+    {
+      NotificationTypeTest(1000);
+    }
+
+    [Test]
+    public void MainPermissionExceptionCheckTest()
+    {
+      ExecuteNonQuery("USE [TestDatabase] DENY CREATE PROCEDURE TO [TempUser];", MasterConnectionString);
+      var errorReceived = false;
+      try
+      {
+        using (var test = new SqlDependencyEx(
+          TestConnectionString,
+          TestDatabaseName,
+          TestTableName,
+          "temp")) test.Start();
+      }
+      catch (SqlException)
+      {
+        errorReceived = true;
+      }
+
+      Assert.AreEqual(true, errorReceived);
+
+      // It is impossible to start notification without CREATE PROCEDURE permission.
+      ExecuteNonQuery("USE [TestDatabase] GRANT CREATE PROCEDURE TO [TempUser];", MasterConnectionString);
+      errorReceived = false;
+      try
+      {
+        using (var test = new SqlDependencyEx(
+          TestConnectionString,
+          TestDatabaseName,
+          TestTableName,
+          "temp")) test.Start();
+      }
+      catch (SqlException)
+      {
+        errorReceived = true;
+      }
+
+      Assert.AreEqual(false, errorReceived);
+
+      // There is supposed to be no exceptions with admin rights.
+      using (var test = new SqlDependencyEx(
+        MasterConnectionString,
+        TestDatabaseName,
+        TestTableName,
+        "temp")) test.Start();
+    }
+
+    [Test]
+    public void AdminPermissionExceptionCheckTest()
+    {
+      const string scriptDisableBroker = @"
+                ALTER DATABASE [TestDatabase] SET SINGLE_USER WITH ROLLBACK IMMEDIATE
+                ALTER DATABASE [TestDatabase] SET DISABLE_BROKER; 
+                ALTER DATABASE [TestDatabase] SET MULTI_USER WITH ROLLBACK IMMEDIATE";
+
+      // It is impossible to start notification without configured service broker.
+      ExecuteNonQuery(scriptDisableBroker, MasterConnectionString);
+      var errorReceived = false;
+      try
+      {
+        using (var test = new SqlDependencyEx(
+          TestConnectionString,
+          TestDatabaseName,
+          TestTableName,
+          "temp")) test.Start();
+      }
+      catch (SqlException)
+      {
+        errorReceived = true;
+      }
+
+      Assert.AreEqual(true, errorReceived);
+
+      // Service broker supposed to be configured automatically with MASTER connection string.
+      NotificationTest(10, connStr: MasterConnectionString);
+    }
+
+    [Test]
+    public void GetActiveDbListenersTest()
+    {
+      Func<int> getDbDepCount =
+        () =>
+          SqlDependencyEx.GetDependencyDbIdentities(
+            TestConnectionString,
+            TestDatabaseName).Length;
+
+      using (var dep1 = new SqlDependencyEx(TestConnectionString, TestDatabaseName, TestTableName, "temp"
+        , identity: 4))
+      using (var dep2 = new SqlDependencyEx(TestConnectionString, TestDatabaseName, TestTableName, "temp"
+        , identity: 5))
+      {
+        dep1.Start();
+
+        // Make sure db has been got 1 dependency object.
+        Assert.AreEqual(1, getDbDepCount());
+
+        dep2.Start();
+
+        // Make sure db has been got 2 dependency object.
+        Assert.AreEqual(2, getDbDepCount());
+      }
+
+      // Make sure db has no any dependency objects.
+      Assert.AreEqual(0, getDbDepCount());
+    }
+
+    [Test]
+    public void ClearDatabaseTest()
+    {
+      Func<int> getDbDepCount =
+        () =>
+          SqlDependencyEx.GetDependencyDbIdentities(
+            TestConnectionString,
+            TestDatabaseName).Length;
+
+      var dep1 = new SqlDependencyEx(
+        TestConnectionString,
+        TestDatabaseName,
+        TestTableName,
+        "temp",
+        identity: 4);
+      var dep2 = new SqlDependencyEx(
+        TestConnectionString,
+        TestDatabaseName,
+        TestTableName,
+        "temp",
+        identity: 5);
+
+      dep1.Start();
+      // Make sure db has been got 1 dependency object.
+      Assert.AreEqual(1, getDbDepCount());
+      dep2.Start();
+      // Make sure db has been got 2 dependency object.
+      Assert.AreEqual(2, getDbDepCount());
+
+      // Forced db cleaning
+      SqlDependencyEx.CleanDatabase(TestConnectionString, TestDatabaseName);
+
+      // Make sure db has no any dependency objects.
+      Assert.AreEqual(0, getDbDepCount());
+
+      dep1.Dispose();
+      dep2.Dispose();
+    }
+
+    [Test]
+    public void TwoTablesNotificationsTest()
+    {
+      var table1InsertsReceived = 0;
+      var table1DeletesReceived = 0;
+      var table1TotalNotifications = 0;
+      var table1TotalDeleted = 0;
+
+      var table2InsertsReceived = 0;
+      var table2DeletesReceived = 0;
+      var table2TotalNotifications = 0;
+      var table2TotalInserted = 0;
+
+      using (var sqlDependencyFirstTable = new SqlDependencyEx(
+        TestConnectionString,
+        "TestDatabase",
+        "TestTable",
+        "temp",
+        SqlDependencyEx.NotificationTypes.Delete,
+        true,
+        0))
+      {
+
+        sqlDependencyFirstTable.TableChanged += (sender, args) =>
+        {
+          if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+          {
+            table1DeletesReceived++;
+            table1TotalDeleted += args.Data.Element("deleted").Elements("row").Count();
+          }
+
+          if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+          {
+            table1InsertsReceived++;
+          }
+
+          table1TotalNotifications++;
+        };
+
+        if (!sqlDependencyFirstTable.Active)
+          sqlDependencyFirstTable.Start();
+
+        using (var sqlDependencySecondTable = new SqlDependencyEx(
+          TestConnectionString,
+          "TestDatabase",
+          "TestTable",
+          "temp2",
+          SqlDependencyEx.NotificationTypes.Insert,
+          true,
+          1))
+        {
+
+          sqlDependencySecondTable.TableChanged += (sender, args) =>
+          {
+            if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+            {
+              table2DeletesReceived++;
+            }
+
+            if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+            {
+              table2InsertsReceived++;
+              table2TotalInserted += args.Data.Element("inserted").Elements("row").Count();
+            }
+
+            table2TotalNotifications++;
+          };
+
+          if (!sqlDependencySecondTable.Active)
+            sqlDependencySecondTable.Start();
+
+          MakeChunkedInsert(5, TestTable1FullName);
+          MakeChunkedInsert(3, TestTable2FullName);
+          MakeChunkedInsert(8, TestTable2FullName);
+
+          DeleteFirstRow(TestTable1FullName);
+          DeleteFirstRow(TestTable1FullName);
+          DeleteFirstRow(TestTable1FullName);
+          DeleteFirstRow(TestTable1FullName);
+
+          DeleteFirstRow(TestTable2FullName);
+          DeleteFirstRow(TestTable2FullName);
+
+          MakeChunkedInsert(1, TestTable2FullName);
+          MakeChunkedInsert(1, TestTable1FullName);
+
+          DeleteFirstRow(TestTable1FullName);
+          DeleteFirstRow(TestTable2FullName);
+
+          // Wait for notification to complete
+          Thread.Sleep(3000);
+        }
+      }
+
+      Assert.AreEqual(5, table1DeletesReceived);
+      Assert.AreEqual(0, table1InsertsReceived);
+      Assert.AreEqual(5, table1TotalNotifications);
+      Assert.AreEqual(5, table1TotalDeleted);
+
+      Assert.AreEqual(3, table2InsertsReceived);
+      Assert.AreEqual(0, table2DeletesReceived);
+      Assert.AreEqual(3, table2TotalNotifications);
+      Assert.AreEqual(12, table2TotalInserted);
+    }
+
+    [Test]
+    public void NullCharacterInsertTest()
+    {
+      var table1InsertsReceived = 0;
+      var table1DeletesReceived = 0;
+      var table1TotalNotifications = 0;
+      var table1TotalDeleted = 0;
+
+      using (var sqlDependencyFirstTable = new SqlDependencyEx(
+        TestConnectionString,
+        "TestDatabase",
+        "TestTable",
+        "temp",
+        SqlDependencyEx.NotificationTypes.Insert,
+        true,
+        0))
+      {
+
+        sqlDependencyFirstTable.TableChanged += (sender, args) =>
+        {
+          if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+          {
+            table1DeletesReceived++;
+          }
+
+          if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+          {
+            table1InsertsReceived++;
+          }
+
+          table1TotalNotifications++;
+        };
+
+        if (!sqlDependencyFirstTable.Active)
+          sqlDependencyFirstTable.Start();
+
+        MakeNullCharacterInsert();
+        MakeNullCharacterInsert();
+        MakeNullCharacterInsert();
+
+        // Wait for notification to complete
+        Thread.Sleep(3000);
+      }
+
+      Assert.AreEqual(0, table1DeletesReceived);
+      Assert.AreEqual(3, table1InsertsReceived);
+      Assert.AreEqual(3, table1TotalNotifications);
+      Assert.AreEqual(0, table1TotalDeleted);
+    }
+
+    [Test]
+    public void SpecialTableNameWithoutSquareBracketsTest()
+    {
+      var table1InsertsReceived = 0;
+      var table1DeletesReceived = 0;
+      var table1TotalNotifications = 0;
+      var table1TotalDeleted = 0;
+
+      using (var sqlDependencyFirstTable = new SqlDependencyEx(
+        TestConnectionString,
+        "TestDatabase",
+        "Order",
+        "temp",
+        SqlDependencyEx.NotificationTypes.Insert,
+        true,
+        0))
+      {
+
+        sqlDependencyFirstTable.TableChanged += (sender, args) =>
+        {
+          if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+          {
+            table1DeletesReceived++;
+          }
+
+          if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+          {
+            table1InsertsReceived++;
+          }
+
+          table1TotalNotifications++;
+        };
+
+        if (!sqlDependencyFirstTable.Active)
+          sqlDependencyFirstTable.Start();
+
+        MakeNullCharacterInsert("[temp].[Order]");
+        MakeNullCharacterInsert("[temp].[Order]");
+        MakeNullCharacterInsert("[temp].[Order]");
+
+        // Wait for notification to complete
+        Thread.Sleep(3000);
+      }
+
+      Assert.AreEqual(0, table1DeletesReceived);
+      Assert.AreEqual(3, table1InsertsReceived);
+      Assert.AreEqual(3, table1TotalNotifications);
+      Assert.AreEqual(0, table1TotalDeleted);
+    }
+
+    [Test]
+    public void SpecialFieldNameWithoutSquareBracketsTest()
+    {
+      var table1InsertsReceived = 0;
+      var table1DeletesReceived = 0;
+      var table1TotalNotifications = 0;
+      var table1TotalDeleted = 0;
+
+      using (var sqlDependencyFirstTable = new SqlDependencyEx(
+        TestConnectionString,
+        "TestDatabase",
+        "Order2",
+        "temp",
+        SqlDependencyEx.NotificationTypes.Insert,
+        true,
+        0))
+      {
+
+        sqlDependencyFirstTable.TableChanged += (sender, args) =>
+        {
+          if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+          {
+            table1DeletesReceived++;
+          }
+
+          if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+          {
+            table1InsertsReceived++;
+          }
+
+          table1TotalNotifications++;
+        };
+
+        if (!sqlDependencyFirstTable.Active)
+          sqlDependencyFirstTable.Start();
+
+        MakeNullCharacterInsert("[temp].[Order2]", "[Order]");
+        MakeNullCharacterInsert("[temp].[Order2]", "[Order]");
+        MakeNullCharacterInsert("[temp].[Order2]", "[Order]");
+
+        // Wait for notification to complete
+        Thread.Sleep(3000);
+      }
+
+      Assert.AreEqual(0, table1DeletesReceived);
+      Assert.AreEqual(3, table1InsertsReceived);
+      Assert.AreEqual(3, table1TotalNotifications);
+      Assert.AreEqual(0, table1TotalDeleted);
+    }
+
+    [Test]
+    public void UnsupportedFieldTypeTest()
+    {
+      var table1InsertsReceived = 0;
+      var table1DeletesReceived = 0;
+      var table1TotalNotifications = 0;
+      var table1TotalDeleted = 0;
+
+      using (var sqlDependencyFirstTable = new SqlDependencyEx(
+        TestConnectionString,
+        "TestDatabase",
+        "Order3",
+        "temp",
+        SqlDependencyEx.NotificationTypes.Insert,
+        true,
+        0))
+      {
+
+        sqlDependencyFirstTable.TableChanged += (sender, args) =>
+        {
+          if (args.NotificationType == SqlDependencyEx.NotificationTypes.Delete)
+          {
+            table1DeletesReceived++;
+          }
+
+          if (args.NotificationType == SqlDependencyEx.NotificationTypes.Insert)
+          {
+            table1InsertsReceived++;
+          }
+
+          table1TotalNotifications++;
+        };
+
+        if (!sqlDependencyFirstTable.Active)
+          sqlDependencyFirstTable.Start();
+
+        MakeNullCharacterInsert("[temp].[Order3]");
+        MakeNullCharacterInsert("[temp].[Order3]");
+        MakeNullCharacterInsert("[temp].[Order3]");
+
+        // Wait for notification to complete
+        Thread.Sleep(3000);
+      }
+
+      Assert.AreEqual(0, table1DeletesReceived);
+      Assert.AreEqual(3, table1InsertsReceived);
+      Assert.AreEqual(3, table1TotalNotifications);
+      Assert.AreEqual(0, table1TotalDeleted);
+    }
+
+    [Test]
+    public void NotificationWithoutDetailsTest()
+    {
+      NoDetailsTest(10);
+    }
+
+    public void ResourcesReleasabilityTest(int changesCount)
+    {
+      using (var sqlConnection = new SqlConnection(AdminTestConnectionString))
+      {
+        sqlConnection.Open();
+
+        var sqlConversationEndpointsCount = sqlConnection.GetUnclosedConversationEndpointsCount();
+        var sqlConversationGroupsCount = sqlConnection.GetConversationGroupsCount();
+        var sqlServiceQueuesCount = sqlConnection.GetServiceQueuesCount();
+        var sqlServicesCount = sqlConnection.GetServicesCount();
+        var sqlTriggersCount = sqlConnection.GetTriggersCount();
+        var sqlProceduresCount = sqlConnection.GetProceduresCount();
+
+        using (var sqlDependency = new SqlDependencyEx(
+          TestConnectionString,
+          TestDatabaseName,
+          TestTableName, "temp"))
+        {
+          sqlDependency.Start();
+
+          // Make sure we've created one queue, sevice, trigger and two procedures.
+          Assert.AreEqual(sqlServicesCount + 1, sqlConnection.GetServicesCount());
+          Assert.AreEqual(
+            sqlServiceQueuesCount + 1,
+            sqlConnection.GetServiceQueuesCount());
+          Assert.AreEqual(sqlTriggersCount + 1, sqlConnection.GetTriggersCount());
+          Assert.AreEqual(sqlProceduresCount + 2, sqlConnection.GetProceduresCount());
+
+          MakeTableInsertDeleteChanges(changesCount);
+
+          // Wait a little bit to process all changes.
+          Thread.Sleep(1000);
+        }
+
+        // Make sure we've released all resources.
+        Assert.AreEqual(sqlServicesCount, sqlConnection.GetServicesCount());
+        Assert.AreEqual(
+          sqlConversationGroupsCount,
+          sqlConnection.GetConversationGroupsCount());
+        Assert.AreEqual(
+          sqlServiceQueuesCount,
+          sqlConnection.GetServiceQueuesCount());
+        Assert.AreEqual(
+          sqlConversationEndpointsCount,
+          sqlConnection.GetUnclosedConversationEndpointsCount());
+        Assert.AreEqual(sqlTriggersCount, sqlConnection.GetTriggersCount());
+        Assert.AreEqual(sqlProceduresCount, sqlConnection.GetProceduresCount());
+      }
+    }
+
+    private void NotificationTest(
+      int changesCount,
+      int changesDelayInSec = 0,
+      string connStr = TestConnectionString)
+    {
+      var changesReceived = 0;
+
+      using (var sqlDependency = new SqlDependencyEx(
+        connStr,
+        TestDatabaseName,
+        TestTableName, "temp"))
+      {
+        sqlDependency.TableChanged += (o, e) => changesReceived++;
+        sqlDependency.Start();
+
+        Thread.Sleep(changesDelayInSec * 1000);
+        MakeTableInsertDeleteChanges(changesCount);
+
+        // Wait a little bit to receive all changes.
+        Thread.Sleep(1000);
+      }
+
+      Assert.AreEqual(changesCount, changesReceived);
+    }
+
+    private static void NotificationTypeTest(int insertsCount)
+    {
+      NotificationTypeTest(insertsCount, SqlDependencyEx.NotificationTypes.Insert);
+      NotificationTypeTest(insertsCount, SqlDependencyEx.NotificationTypes.Delete);
+      NotificationTypeTest(insertsCount, SqlDependencyEx.NotificationTypes.Update);
+      NotificationTypeTest(
+        insertsCount,
+        SqlDependencyEx.NotificationTypes.Insert | SqlDependencyEx.NotificationTypes.Delete);
+      NotificationTypeTest(
+        insertsCount,
+        SqlDependencyEx.NotificationTypes.Insert | SqlDependencyEx.NotificationTypes.Update);
+      NotificationTypeTest(
+        insertsCount,
+        SqlDependencyEx.NotificationTypes.Delete | SqlDependencyEx.NotificationTypes.Update);
+    }
+
+    private static void NotificationTypeTest(int insertsCount, SqlDependencyEx.NotificationTypes testType)
+    {
+      var elementsInDetailsCount = 0;
+      var changesReceived = 0;
+      var expectedElementsInDetails = 0;
+
+      var notificationTypes = GetMembers(testType);
+      foreach (var temp in notificationTypes)
+        switch (temp)
+        {
+          case SqlDependencyEx.NotificationTypes.Insert:
+            expectedElementsInDetails += insertsCount / 2;
+            break;
+          case SqlDependencyEx.NotificationTypes.Update:
+            expectedElementsInDetails += insertsCount;
+            break;
+          case SqlDependencyEx.NotificationTypes.Delete:
+            expectedElementsInDetails += insertsCount / 2;
+            break;
+        }
+
+      using (var sqlDependency = new SqlDependencyEx(
+        TestConnectionString,
+        TestDatabaseName,
+        TestTableName, "temp", testType))
+      {
+        sqlDependency.TableChanged += (o, e) =>
+        {
+          changesReceived++;
+
+          if (e.Data == null) return;
+
+          var inserted = e.Data.Element("inserted");
+          var deleted = e.Data.Element("deleted");
+
+          elementsInDetailsCount += inserted != null
+            ? inserted.Elements("row").Count()
+            : 0;
+          elementsInDetailsCount += deleted != null
+            ? deleted.Elements("row").Count()
+            : 0;
+        };
+        sqlDependency.Start();
+
+        MakeChunkedInsertDeleteUpdate(insertsCount);
+
+        // Wait a little bit to receive all changes.
+        Thread.Sleep(1000);
+      }
+
+      Assert.AreEqual(expectedElementsInDetails, elementsInDetailsCount);
+      Assert.AreEqual(notificationTypes.Length, changesReceived);
+    }
+
+    private static void DetailsTest(int insertsCount)
+    {
+      var elementsInDetailsCount = 0;
+      var changesReceived = 0;
+
+      using (var sqlDependency = new SqlDependencyEx(
+        TestConnectionString,
+        TestDatabaseName,
+        TestTableName, "temp"))
+      {
+        sqlDependency.TableChanged += (o, e) =>
+        {
+          changesReceived++;
+
+          if (e.Data == null) return;
+
+          var inserted = e.Data.Element("inserted");
+          var deleted = e.Data.Element("deleted");
+
+          elementsInDetailsCount += inserted != null
+            ? inserted.Elements("row").Count()
+            : 0;
+          elementsInDetailsCount += deleted != null
+            ? deleted.Elements("row").Count()
+            : 0;
+        };
+        sqlDependency.Start();
+
+        MakeChunkedInsertDeleteUpdate(insertsCount);
+
+        // Wait a little bit to receive all changes.
+        Thread.Sleep(1000);
+      }
+
+      Assert.AreEqual(insertsCount * 2, elementsInDetailsCount);
+      Assert.AreEqual(3, changesReceived);
+    }
+
+    private void NoDetailsTest(
+      int changesCount,
+      int changesDelayInSec = 0,
+      string connStr = TestConnectionString)
+    {
+      var changesReceived = 0;
+
+      using (var sqlDependency = new SqlDependencyEx(
+        connStr,
+        TestDatabaseName,
+        TestTableName, "temp", receiveDetails: false))
+      {
+        sqlDependency.TableChanged += (o, e) =>
+        {
+          Assert.AreEqual(SqlDependencyEx.NotificationTypes.None, e.NotificationType);
+          Assert.AreEqual(0, e.Data.Elements().Count());
+
+          changesReceived++;
+        };
+        sqlDependency.Start();
+
+        Thread.Sleep(changesDelayInSec * 1000);
+        MakeTableInsertDeleteChanges(changesCount);
+
+        // Wait a little bit to receive all changes.
+        Thread.Sleep(1000);
+      }
+
+      Assert.AreEqual(changesCount, changesReceived);
+    }
+
+    private static void MakeChunkedInsertDeleteUpdate(int changesCount)
+    {
+      const string scriptFormat = "INSERT INTO #TmpTbl VALUES({0}, N'{1}')\r\n";
+
+      // insert unicode statement
+      var scriptResult = new StringBuilder("SELECT 0 AS Number, N'юникод<>_1000001' AS Str INTO #TmpTbl\r\n");
+      for (var i = 1; i < changesCount / 2; i++) scriptResult.Append(string.Format(scriptFormat, i, "юникод<>_" + i));
+
+      scriptResult.Append(@"INSERT INTO temp.TestTable (TestField, StrField)   
+                                            SELECT * FROM #TmpTbl");
+      ExecuteNonQuery(scriptResult.ToString(), TestConnectionString);
+      ExecuteNonQuery("UPDATE temp.TestTable SET StrField = NULL", TestConnectionString);
+      ExecuteNonQuery("DELETE FROM temp.TestTable", TestConnectionString);
+    }
+
+    private static void MakeChunkedInsert(int chunkSize, string tableName = "temp.TestTable")
+    {
+      const string scriptFormat = "INSERT INTO #TmpTbl VALUES({0}, N'{1}')\r\n";
+
+      // insert a unicode statement
+      var scriptResult = new StringBuilder("SELECT 0 AS Number, N'юникод<>_1000001' AS Str INTO #TmpTbl\r\n");
+      for (var i = 1; i < chunkSize; i++) scriptResult.Append(string.Format(scriptFormat, i, "юникод<>_" + i));
+
+      scriptResult.Append($"INSERT INTO {tableName} (TestField, StrField) SELECT * FROM #TmpTbl");
+      ExecuteNonQuery(scriptResult.ToString(), TestConnectionString);
+    }
+
+    private static void MakeNullCharacterInsert(string tableName = "temp.TestTable", string firstFieldName = "TestField",
+      string secondFieldName = "StrField")
+    {
+      // insert a unicode statement
+      var scriptResult = new StringBuilder("SELECT 0 AS Number, CONVERT(VARCHAR(MAX), 0x00) AS Str INTO #TmpTbl\r\n");
+
+      scriptResult.Append($"INSERT INTO {tableName} ({firstFieldName}, {secondFieldName}) SELECT * FROM #TmpTbl");
+      ExecuteNonQuery(scriptResult.ToString(), TestConnectionString);
+    }
+
+    private static void DeleteFirstRow(string tableName = "temp.TestTable")
+    {
+      string script = $@"
+                WITH q AS
+                (
+                    SELECT TOP 1 *
+                    FROM {tableName}
+                )
+                DELETE FROM q";
+
+      ExecuteNonQuery(script, TestConnectionString);
+    }
+
+    private static void MakeTableInsertDeleteChanges(int changesCount)
+    {
+      for (var i = 0; i < changesCount / 2; i++)
+      {
+        ExecuteNonQuery(string.Format(InsertFormat, i), MasterConnectionString);
+        ExecuteNonQuery(string.Format(RemoveFormat, i), MasterConnectionString);
+      }
+    }
+
+    private static void ExecuteNonQuery(string commandText, string connectionString)
+    {
+      using (var conn = new SqlConnection(connectionString))
+      using (var command = new SqlCommand(commandText, conn))
+      {
+        conn.Open();
+        command.CommandType = CommandType.Text;
+        command.CommandTimeout = 60000;
+        command.ExecuteNonQuery();
+      }
+    }
+
+    private static SqlDependencyEx.NotificationTypes[] GetMembers(SqlDependencyEx.NotificationTypes value)
+    {
+      return
+        Enum.GetValues(typeof(SqlDependencyEx.NotificationTypes))
+          .Cast<int>()
+          .Where(enumValue => enumValue != 0 && (enumValue & (int) value) == enumValue)
+          .Cast<SqlDependencyEx.NotificationTypes>()
+          .ToArray();
+    }
+  }
+}
