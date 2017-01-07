@@ -1,1 +1,10 @@
+C:\Projects\ServiceBrokerListener\ServiceBrokerListener\ServiceBrokerListener.UnitTests\bin\Debug\ServiceBrokerListener.UnitTests.dll
+C:\Projects\ServiceBrokerListener\ServiceBrokerListener\ServiceBrokerListener.UnitTests\bin\Debug\ServiceBrokerListener.UnitTests.pdb
+C:\Projects\ServiceBrokerListener\ServiceBrokerListener\ServiceBrokerListener.UnitTests\bin\Debug\Microsoft.VisualStudio.QualityTools.UnitTestFramework.dll
+C:\Projects\ServiceBrokerListener\ServiceBrokerListener\ServiceBrokerListener.UnitTests\bin\Debug\nunit.framework.dll
+C:\Projects\ServiceBrokerListener\ServiceBrokerListener\ServiceBrokerListener.UnitTests\bin\Debug\ServiceBrokerListener.Domain.dll
+C:\Projects\ServiceBrokerListener\ServiceBrokerListener\ServiceBrokerListener.UnitTests\bin\Debug\ServiceBrokerListener.Domain.pdb
+C:\Projects\ServiceBrokerListener\ServiceBrokerListener\ServiceBrokerListener.UnitTests\bin\Debug\nunit.framework.xml
 C:\Projects\ServiceBrokerListener\ServiceBrokerListener\ServiceBrokerListener.UnitTests\obj\Debug\ServiceBrokerListener.UnitTests.csprojResolveAssemblyReference.cache
+C:\Projects\ServiceBrokerListener\ServiceBrokerListener\ServiceBrokerListener.UnitTests\obj\Debug\ServiceBrokerListener.UnitTests.dll
+C:\Projects\ServiceBrokerListener\ServiceBrokerListener\ServiceBrokerListener.UnitTests\obj\Debug\ServiceBrokerListener.UnitTests.pdb
