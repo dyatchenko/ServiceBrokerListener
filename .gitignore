@@ -283,3 +283,5 @@ $RECYCLE.BIN/
 /ServiceBrokerListener/ServiceBrokerListener.Domain.Core/.vs/*.dg
 /ServiceBrokerListener/ServiceBrokerListener.Domain.Core/.vs/ServiceBrokerListener.Domain.Core/v14/*.suo
 packages/
+*.cache
+*.dll
