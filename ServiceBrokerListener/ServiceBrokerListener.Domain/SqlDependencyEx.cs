@@ -141,7 +141,7 @@ namespace ServiceBrokerListener.Domain
                             
                             SET @select = STUFF((SELECT '','' + ''['' + COLUMN_NAME + '']''
 						                         FROM INFORMATION_SCHEMA.COLUMNS
-						                         WHERE DATA_TYPE NOT IN  (''text'',''ntext'',''image'',''geometry'',''geography'') AND TABLE_NAME = ''{5}'' AND TABLE_CATALOG = ''{0}''
+						                         WHERE DATA_TYPE NOT IN  (''text'',''ntext'',''image'',''geometry'',''geography'') AND TABLE_SCHEMA = ''{6}'' AND TABLE_NAME = ''{5}'' AND TABLE_CATALOG = ''{0}''
 						                         FOR XML PATH ('''')
 						                         ), 1, 1, '''')
                             SET @sqlInserted = 
@@ -212,26 +212,15 @@ namespace ServiceBrokerListener.Domain
                 IF EXISTS (SELECT * FROM sys.databases 
                                     WHERE name = '{0}' AND (is_broker_enabled = 0 OR is_trustworthy_on = 0)) 
                 BEGIN
-                     IF (NOT EXISTS(SELECT * FROM sys.fn_my_permissions(NULL, 'SERVER')
-                                             WHERE permission_name = 'CONTROL SERVER'))
-                     BEGIN
-                        DECLARE @msg VARCHAR(MAX)
-                        SET @msg = 'Current user doesn''t have CONTROL SERVER permission to enable service broker. '
-                        SET @msg = @msg + 'Grant sufficient permissions to current user or '
-                        SET @msg = @msg + 'execute ALTER DATABASE [<dbname>] SET ENABLE_BROKER with admin rights.'
 
-                        RAISERROR (@msg, 16, 1)
-                     END
-                     ELSE 
-                     BEGIN
-                        ALTER DATABASE [{0}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE
-                        ALTER DATABASE [{0}] SET ENABLE_BROKER; 
-                        ALTER DATABASE [{0}] SET MULTI_USER WITH ROLLBACK IMMEDIATE
+                    ALTER DATABASE [{0}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE
+                    ALTER DATABASE [{0}] SET ENABLE_BROKER; 
+                    ALTER DATABASE [{0}] SET MULTI_USER WITH ROLLBACK IMMEDIATE
 
-                        -- FOR SQL Express
-                        ALTER AUTHORIZATION ON DATABASE::[{0}] TO [sa]
-                        ALTER DATABASE [{0}] SET TRUSTWORTHY ON;               
-                     END
+                    -- FOR SQL Express
+                    ALTER AUTHORIZATION ON DATABASE::[{0}] TO [sa]
+                    ALTER DATABASE [{0}] SET TRUSTWORTHY ON;
+
                 END
 
                 -- Create a queue which will hold the tracked information 
