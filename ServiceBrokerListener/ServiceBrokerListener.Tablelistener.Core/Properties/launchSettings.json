@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ServiceBrokerListener.Tablelistener.Core": {
+      "commandName": "Project",
+      "commandLineArgs": "-c\"Data Source=Leviathon;Initial Catalog=Zappers;Integrated Security=True\" -d\"Zappers\" -t\"Nothing\" -v"
+    }
+  }
+}

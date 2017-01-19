@@ -59,13 +59,13 @@
     <Compile Include="SqlDependencyTest.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\ServiceBrokerListener.Domain\ServiceBrokerListener.Domain.csproj">
       <Project>{eee03701-d244-4b4f-bf10-7cea9bd2048e}</Project>
       <Name>ServiceBrokerListener.Domain</Name>
     </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
   </ItemGroup>
   <Choose>
     <When Condition="'$(VisualStudioVersion)' == '10.0' And '$(IsCodedUITest)' == 'True'">
