@@ -14,5 +14,17 @@
     "netstandard1.6": {
       "imports": "dnxcore50"
     }
+  },
+
+  "buildOptions": {
+    // …
+    "compile": {
+      // …
+      "includeFiles": [
+        // …
+        "../ServiceBrokerListener.Domain/SqlDependencyEx.cs",
+        "../ServiceBrokerListener.Domain/TsqlHelper.cs"
+      ]
+    }
   }
 }
