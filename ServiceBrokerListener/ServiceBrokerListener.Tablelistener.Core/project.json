@@ -14,7 +14,7 @@
     "System.Console": "4.3.0"  },
 
   "frameworks": {
-    "netcoreapp1.0": {
+    "netcoreapp1.6": {
       "imports": "dnxcore50"
     }
   }

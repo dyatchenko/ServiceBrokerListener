@@ -50,11 +50,11 @@ namespace ServiceBrokerListener.Domain
             {
                 get
                 {
-                    return Data?.Element(INSERTED_TAG) != null
-                               ? Data?.Element(DELETED_TAG) != null
+                    return (Data != null ? Data.Element(INSERTED_TAG) : null) != null
+                               ? (Data != null ? Data.Element(DELETED_TAG) : null) != null
                                      ? NotificationTypes.Update
                                      : NotificationTypes.Insert
-                               : Data?.Element(DELETED_TAG) != null
+                               : (Data != null ? Data.Element(DELETED_TAG) : null) != null
                                      ? NotificationTypes.Delete
                                      : NotificationTypes.None;
                 }
@@ -460,9 +460,9 @@ namespace ServiceBrokerListener.Domain
 
         private const int COMMAND_TIMEOUT = 60000;
 
-        private static readonly List<int> ActiveEntities = new List<int>(); 
+        private static readonly List<int> ActiveEntities = new List<int>();
 
-        private Thread listenerThread;
+        private CancellationTokenSource _threadSource;
 
         public string ConversationQueueName
         {
@@ -557,40 +557,10 @@ namespace ServiceBrokerListener.Domain
 
             this.InstallNotification();
 
-            ThreadStart threadLoop = () =>
-                {
-                    try
-                    {
-                        while (true)
-                        {
-                            string message = ReceiveEvent();
-                            this.Active = true;
-                            if (!string.IsNullOrWhiteSpace(message))
-                                OnTableChanged(message);
-                        }
-                    }
-                    catch
-                    {
-                        // ignored
-                    }
-                    finally
-                    {
-                        Active = false;
-                        OnNotificationProcessStopped();
-                    }
-                };
+            _threadSource = new CancellationTokenSource();
 
-            var thread = new Thread(threadLoop)
-                             {
-                                 Name =
-                                     string.Format(
-                                         "{0}_Thread_{1}",
-                                         this.GetType().FullName,
-                                         this.Identity),
-                                 IsBackground = true
-                             };
-            thread.Start();
-            this.listenerThread = thread;
+            // Pass the token to the cancelable operation.
+            ThreadPool.QueueUserWorkItem(NotificationLoop, _threadSource.Token);
         }
 
         public void Stop()
@@ -600,12 +570,18 @@ namespace ServiceBrokerListener.Domain
             lock (ActiveEntities)
                 if (ActiveEntities.Contains(Identity)) ActiveEntities.Remove(Identity);
 
-            var thread = this.listenerThread;
-            if ((thread == null) || (!thread.IsAlive))
+            if ((_threadSource == null) || (_threadSource.Token.IsCancellationRequested))
+            {
                 return;
+            }
 
-            thread.Abort();
-            thread.Join();
+            if (!_threadSource.Token.CanBeCanceled)
+            {
+                return;
+            }
+
+            _threadSource.Cancel();
+            _threadSource.Dispose();
         }
 
         public void Dispose()
@@ -650,6 +626,31 @@ namespace ServiceBrokerListener.Domain
             ExecuteNonQuery(
                 string.Format(SQL_FORMAT_FORCED_DATABASE_CLEANING, database),
                 connectionString);
+        }
+
+        private void NotificationLoop(object input)
+        {
+            try
+            {
+                while (true)
+                {
+                    var message = ReceiveEvent();
+                    Active = true;
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        OnTableChanged(message);
+                    }
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+            finally
+            {
+                Active = false;
+                OnNotificationProcessStopped();
+            }
         }
 
         private static void ExecuteNonQuery(string commandText, string connectionString)

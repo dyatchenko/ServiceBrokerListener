@@ -2,7 +2,12 @@
   "title": "ServiceBrokerListener.UnitTests.Core",
   "version": "1.0.0-*",
   "buildOptions": {
-    "emitEntryPoint": true
+    "emitEntryPoint": true,
+    "compile": {
+      "includeFiles": [
+        "../ServiceBrokerListener.UnitTests/SqlDependencyExTest.cs"
+      ]
+    }
   },
 
   "dependencies": {
