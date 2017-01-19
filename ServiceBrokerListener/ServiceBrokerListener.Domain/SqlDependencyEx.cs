@@ -555,6 +555,11 @@ namespace ServiceBrokerListener.Domain
                 ActiveEntities.Add(this.Identity);
             }
 
+            // ASP.NET fix 
+            // IIS is not usually restarted when a new website version is deployed
+            // This situation leads to notification absence in some cases
+            this.Stop();
+
             this.InstallNotification();
 
             _threadSource = new CancellationTokenSource();
