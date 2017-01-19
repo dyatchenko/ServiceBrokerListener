@@ -1,7 +1,7 @@
 # ServiceBrokerListener
-Component which receives SQL Server table changes into your .net code.
+Cross-platform .NET 4.0 (C# 4.0) and .NET Core compatible component which receives SQL Server table changes into your .net code.
 
-You can test it by yourself: http://sbl.azurewebsites.net
+Take a look how it works: http://sbl.azurewebsites.net
 
 # How To Use
 
