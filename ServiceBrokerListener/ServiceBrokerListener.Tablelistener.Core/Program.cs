@@ -1,5 +1,5 @@
 ﻿using CommandLine;
-using ServiceBrokerListener.Domain.Core;
+using ServiceBrokerListener.Domain;
 using System;
 using System.Diagnostics;
 using System.Threading;
