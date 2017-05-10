@@ -102,20 +102,20 @@
             const int ChangesCountFirstTable = 5;
             const int ChangesCountSecondTable = 7;
 
-            int changesReceived1 = 0;
-            int changesReceived2 = 0;
+            var changesReceived1 = 0;
+            var changesReceived2 = 0;
 
             OnChangeEventHandler onChange1 = null;
             onChange1 = (s, e) =>
                 {
                     if (e != null && e.Info == SqlNotificationInfo.Insert) changesReceived1++;
 
-                    using (SqlConnection connection = new SqlConnection(TEST_CONNECTION_STRING))
+                    using (var connection = new SqlConnection(TEST_CONNECTION_STRING))
                     using (var command1 = new SqlCommand("SELECT TestField FROM dbo.TestTable", connection))
                     {
                         connection.Open();
 
-                        SqlDependency dep = (SqlDependency)s;
+                        var dep = (SqlDependency)s;
                         if (dep != null) dep.OnChange -= onChange1;
                         command1.Notification = null;
                         dep = new SqlDependency(command1);
@@ -129,12 +129,12 @@
             {
                 if (e != null && e.Info == SqlNotificationInfo.Insert) changesReceived2++;
 
-                using (SqlConnection connection = new SqlConnection(TEST_CONNECTION_STRING))
-                using (SqlCommand command2 = new SqlCommand("SELECT TestField FROM dbo.TestTable2", connection))
+                using (var connection = new SqlConnection(TEST_CONNECTION_STRING))
+                using (var command2 = new SqlCommand("SELECT TestField FROM dbo.TestTable2", connection))
                 {
                     connection.Open();
 
-                    SqlDependency dep = (SqlDependency)s;
+                    var dep = (SqlDependency)s;
                     if (dep != null) dep.OnChange -= onChange2;
                     command2.Notification = null;
                     dep = new SqlDependency(command2);
@@ -166,10 +166,10 @@
             {
                 sqlConnection.Open();
 
-                int sqlConversationEndpointsCount = sqlConnection.GetUnclosedConversationEndpointsCount();
-                int sqlConversationGroupsCount = sqlConnection.GetConversationGroupsCount();
-                int sqlServiceQueuesCount = sqlConnection.GetServiceQueuesCount();
-                int sqlServicesCount = sqlConnection.GetServicesCount();
+                var sqlConversationEndpointsCount = sqlConnection.GetUnclosedConversationEndpointsCount();
+                var sqlConversationGroupsCount = sqlConnection.GetConversationGroupsCount();
+                var sqlServiceQueuesCount = sqlConnection.GetServiceQueuesCount();
+                var sqlServicesCount = sqlConnection.GetServicesCount();
 
                 NotificationTest(changesCount, false);
 
@@ -195,11 +195,11 @@
             SqlDependency.Stop(TEST_CONNECTION_STRING);
             SqlDependency.Start(TEST_CONNECTION_STRING);
 
-            using (SqlConnection connection = new SqlConnection(TEST_CONNECTION_STRING))
-            using (SqlCommand command = new SqlCommand("SELECT TestField FROM dbo.TestTable", connection))
+            using (var connection = new SqlConnection(TEST_CONNECTION_STRING))
+            using (var command = new SqlCommand("SELECT TestField FROM dbo.TestTable", connection))
             {
                 connection.Open();
-                int changesReceived = 0;
+                var changesReceived = 0;
 
                 OnChangeEventHandler onChange = null;
                 onChange = (s, e) =>
@@ -207,7 +207,7 @@
                         if (e.Info == SqlNotificationInfo.Insert) changesReceived++;
 
                         // SqlDependency magic to receive events consequentially.
-                        SqlDependency dep = (SqlDependency)s;
+                        var dep = (SqlDependency)s;
                         dep.OnChange -= onChange;
                         command.Notification = null;
                         dep = new SqlDependency(command);
@@ -216,7 +216,7 @@
                     };
 
                 // Create a dependency and associate it with the SqlCommand.
-                SqlDependency dependency = new SqlDependency(command);
+                var dependency = new SqlDependency(command);
                 // Subscribe to the SqlDependency event.
                 dependency.OnChange += onChange;
                 // Execute the command.
@@ -232,8 +232,8 @@
 
         private static void ExecuteNonQuery(string commandText, string connectionString)
         {
-            using (SqlConnection conn = new SqlConnection(connectionString))
-            using (SqlCommand command = new SqlCommand(commandText, conn))
+            using (var conn = new SqlConnection(connectionString))
+            using (var command = new SqlCommand(commandText, conn))
             {
                 conn.Open();
                 command.CommandType = CommandType.Text;
@@ -243,7 +243,7 @@
 
         private static void MakeTableInsertChange(int changesCount, string tableName = TEST_TABLE_NAME)
         {
-            for (int i = 0; i < changesCount; i++)
+            for (var i = 0; i < changesCount; i++)
             {
                 ExecuteNonQuery(string.Format(INSERT_FORMAT, i, tableName), TEST_CONNECTION_STRING);
                 // It is one of weaknesses of Microsoft SqlDependency:

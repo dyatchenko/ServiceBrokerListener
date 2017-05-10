@@ -1,94 +1,82 @@
 ﻿using System.IO;
+using System.Threading.Tasks;
 using System.Xml;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Xml.Linq;
 
 namespace ServiceBrokerListener.Domain
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Data;
-    using System.Data.SqlClient;
-    using System.Linq;
-    using System.Text;
-    using System.Threading;
-    using System.Xml.Linq;
+	public sealed class SqlDependencyEx : IDisposable
+	{
+		[Flags]
+		public enum NotificationTypes
+		{
+			None = 0,
+			Insert = 1 << 1,
+			Update = 1 << 2,
+			Delete = 1 << 3
+		}
 
-    public sealed class SqlDependencyEx : IDisposable
-    {
-        [Flags]
-        public enum NotificationTypes
-        {
-            None = 0,
-            Insert = 1 << 1,
-            Update = 1 << 2,
-            Delete = 1 << 3
-        }
+		public class TableChangedEventArgs : EventArgs
+		{
+			private readonly string notificationMessage;
 
-        public class TableChangedEventArgs : EventArgs
-        {
-            private readonly string notificationMessage;
+			private const string INSERTED_TAG = "inserted";
 
-            private const string INSERTED_TAG = "inserted";
+			private const string DELETED_TAG = "deleted";
 
-            private const string DELETED_TAG = "deleted";
+			public TableChangedEventArgs(string notificationMessage)
+			{
+				this.notificationMessage = notificationMessage;
+			}
 
-            public TableChangedEventArgs(string notificationMessage)
-            {
-                this.notificationMessage = notificationMessage;
-            }
+			public XElement Data => string.IsNullOrWhiteSpace(notificationMessage)
+				? null
+				: ReadXDocumentWithInvalidCharacters(notificationMessage);
 
-            public XElement Data
-            {
-                get
-                {
-                    if (string.IsNullOrWhiteSpace(notificationMessage)) return null;
+			public NotificationTypes NotificationType => (Data?.Element(INSERTED_TAG)) != null
+				? (Data?.Element(DELETED_TAG)) != null
+					? NotificationTypes.Update
+					: NotificationTypes.Insert
+				: (Data?.Element(DELETED_TAG)) != null
+					? NotificationTypes.Delete
+					: NotificationTypes.None;
 
-                    return ReadXDocumentWithInvalidCharacters(notificationMessage);
-                }
-            }
+			/// <summary>
+			/// Converts an xml string into XElement with no invalid characters check.
+			/// https://paulselles.wordpress.com/2013/07/03/parsing-xml-with-invalid-characters-in-c-2/
+			/// </summary>
+			/// <param name="xml">The input string.</param>
+			/// <returns>The result XElement.</returns>
+			private static XElement ReadXDocumentWithInvalidCharacters(string xml)
+			{
+				XDocument xDocument;
 
-            public NotificationTypes NotificationType
-            {
-                get
-                {
-                    return (Data != null ? Data.Element(INSERTED_TAG) : null) != null
-                               ? (Data != null ? Data.Element(DELETED_TAG) : null) != null
-                                     ? NotificationTypes.Update
-                                     : NotificationTypes.Insert
-                               : (Data != null ? Data.Element(DELETED_TAG) : null) != null
-                                     ? NotificationTypes.Delete
-                                     : NotificationTypes.None;
-                }
-            }
+				var xmlReaderSettings = new XmlReaderSettings {CheckCharacters = false};
 
-            /// <summary>
-            /// Converts an xml string into XElement with no invalid characters check.
-            /// https://paulselles.wordpress.com/2013/07/03/parsing-xml-with-invalid-characters-in-c-2/
-            /// </summary>
-            /// <param name="xml">The input string.</param>
-            /// <returns>The result XElement.</returns>
-            private static XElement ReadXDocumentWithInvalidCharacters(string xml)
-            {
-                XDocument xDocument = null;
+				using (var stream = new StringReader(xml))
+				using (var xmlReader = XmlReader.Create(stream, xmlReaderSettings))
+				{
+					// Load our XDocument
+					xmlReader.MoveToContent();
+					xDocument = XDocument.Load(xmlReader);
+				}
 
-                XmlReaderSettings xmlReaderSettings = new XmlReaderSettings {CheckCharacters = false};
+				return xDocument.Root;
+			}
+		}
 
-                using (var stream = new StringReader(xml))
-                using (XmlReader xmlReader = XmlReader.Create(stream, xmlReaderSettings))
-                {
-                    // Load our XDocument
-                    xmlReader.MoveToContent();
-                    xDocument = XDocument.Load(xmlReader);
-                }
+		#region Scripts
 
-                return xDocument.Root;
-            }
-        }
+		#region Procedures
 
-        #region Scripts
-
-        #region Procedures
-
-        private const string SQL_PERMISSIONS_INFO = @"
+		private const string SQL_PERMISSIONS_INFO = @"
                     DECLARE @msg VARCHAR(MAX)
                     DECLARE @crlf CHAR(1)
                     SET @crlf = CHAR(10)
@@ -106,17 +94,17 @@ namespace ServiceBrokerListener.Domain
                     PRINT @msg
                 ";
 
-        /// <summary>
-        /// T-SQL script-template which creates notification setup procedure.
-        /// {0} - database name.
-        /// {1} - setup procedure name.
-        /// {2} - service broker configuration statement.
-        /// {3} - notification trigger configuration statement.
-        /// {4} - notification trigger check statement.
-        /// {5} - table name.
-        /// {6} - schema name.
-        /// </summary>
-        private const string SQL_FORMAT_CREATE_INSTALLATION_PROCEDURE = @"
+		/// <summary>
+		/// T-SQL script-template which creates notification setup procedure.
+		/// {0} - database name.
+		/// {1} - setup procedure name.
+		/// {2} - service broker configuration statement.
+		/// {3} - notification trigger configuration statement.
+		/// {4} - notification trigger check statement.
+		/// {5} - table name.
+		/// {6} - schema name.
+		/// </summary>
+		private const string SQL_FORMAT_CREATE_INSTALLATION_PROCEDURE = @"
                 USE [{0}]
                 " + SQL_PERMISSIONS_INFO + @"
                 IF OBJECT_ID ('{6}.{1}', 'P') IS NULL
@@ -163,16 +151,16 @@ namespace ServiceBrokerListener.Domain
                 END
             ";
 
-        /// <summary>
-        /// T-SQL script-template which creates notification uninstall procedure.
-        /// {0} - database name.
-        /// {1} - uninstall procedure name.
-        /// {2} - notification trigger drop statement.
-        /// {3} - service broker uninstall statement.
-        /// {4} - schema name.
-        /// {5} - install procedure name.
-        /// </summary>
-        private const string SQL_FORMAT_CREATE_UNINSTALLATION_PROCEDURE = @"
+		/// <summary>
+		/// T-SQL script-template which creates notification uninstall procedure.
+		/// {0} - database name.
+		/// {1} - uninstall procedure name.
+		/// {2} - notification trigger drop statement.
+		/// {3} - service broker uninstall statement.
+		/// {4} - schema name.
+		/// {5} - install procedure name.
+		/// </summary>
+		private const string SQL_FORMAT_CREATE_UNINSTALLATION_PROCEDURE = @"
                 USE [{0}]
                 " + SQL_PERMISSIONS_INFO + @"
                 IF OBJECT_ID ('{4}.{1}', 'P') IS NULL
@@ -196,18 +184,18 @@ namespace ServiceBrokerListener.Domain
                 END
             ";
 
-        #endregion
+		#endregion
 
-        #region ServiceBroker notification
+		#region ServiceBroker notification
 
-        /// <summary>
-        /// T-SQL script-template which prepares database for ServiceBroker notification.
-        /// {0} - database name;
-        /// {1} - conversation queue name.
-        /// {2} - conversation service name.
-        /// {3} - schema name.
-        /// </summary>
-        private const string SQL_FORMAT_INSTALL_SEVICE_BROKER_NOTIFICATION = @"
+		/// <summary>
+		/// T-SQL script-template which prepares database for ServiceBroker notification.
+		/// {0} - database name;
+		/// {1} - conversation queue name.
+		/// {2} - conversation service name.
+		/// {3} - schema name.
+		/// </summary>
+		private const string SQL_FORMAT_INSTALL_SEVICE_BROKER_NOTIFICATION = @"
                 -- Setup Service Broker
                 IF EXISTS (SELECT * FROM sys.databases 
                                     WHERE name = '{0}' AND (is_broker_enabled = 0 OR is_trustworthy_on = 0)) 
@@ -231,13 +219,13 @@ namespace ServiceBrokerListener.Domain
 	                CREATE SERVICE [{2}] ON QUEUE {3}.[{1}] ([DEFAULT]) 
             ";
 
-        /// <summary>
-        /// T-SQL script-template which removes database notification.
-        /// {0} - conversation queue name.
-        /// {1} - conversation service name.
-        /// {2} - schema name.
-        /// </summary>
-        private const string SQL_FORMAT_UNINSTALL_SERVICE_BROKER_NOTIFICATION = @"
+		/// <summary>
+		/// T-SQL script-template which removes database notification.
+		/// {0} - conversation queue name.
+		/// {1} - conversation service name.
+		/// {2} - schema name.
+		/// </summary>
+		private const string SQL_FORMAT_UNINSTALL_SERVICE_BROKER_NOTIFICATION = @"
                 DECLARE @serviceId INT
                 SELECT @serviceId = service_id FROM sys.services 
                 WHERE sys.services.name = '{1}'
@@ -262,37 +250,37 @@ namespace ServiceBrokerListener.Domain
 	                DROP QUEUE {2}.[{0}];
             ";
 
-        #endregion
+		#endregion
 
-        #region Notification Trigger
+		#region Notification Trigger
 
-        /// <summary>
-        /// T-SQL script-template which creates notification trigger.
-        /// {0} - notification trigger name. 
-        /// {1} - schema name.
-        /// </summary>
-        private const string SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER = @"
+		/// <summary>
+		/// T-SQL script-template which creates notification trigger.
+		/// {0} - notification trigger name. 
+		/// {1} - schema name.
+		/// </summary>
+		private const string SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER = @"
                 IF OBJECT_ID ('{1}.{0}', 'TR') IS NOT NULL
                     DROP TRIGGER {1}.[{0}];
             ";
 
-        private const string SQL_FORMAT_CHECK_NOTIFICATION_TRIGGER = @"
+		private const string SQL_FORMAT_CHECK_NOTIFICATION_TRIGGER = @"
                 IF OBJECT_ID ('{1}.{0}', 'TR') IS NOT NULL
                     RETURN;
             ";
 
-        /// <summary>
-        /// T-SQL script-template which creates notification trigger.
-        /// {0} - monitorable table name.
-        /// {1} - notification trigger name.
-        /// {2} - event data (INSERT, DELETE, UPDATE...).
-        /// {3} - conversation service name. 
-        /// {4} - detailed changes tracking mode.
-        /// {5} - schema name.
-        /// %inserted_select_statement% - sql code which sets trigger "inserted" value to @retvalOUT variable.
-        /// %deleted_select_statement% - sql code which sets trigger "deleted" value to @retvalOUT variable.
-        /// </summary>
-        private const string SQL_FORMAT_CREATE_NOTIFICATION_TRIGGER = @"
+		/// <summary>
+		/// T-SQL script-template which creates notification trigger.
+		/// {0} - monitorable table name.
+		/// {1} - notification trigger name.
+		/// {2} - event data (INSERT, DELETE, UPDATE...).
+		/// {3} - conversation service name. 
+		/// {4} - detailed changes tracking mode.
+		/// {5} - schema name.
+		/// %inserted_select_statement% - sql code which sets trigger "inserted" value to @retvalOUT variable.
+		/// %deleted_select_statement% - sql code which sets trigger "deleted" value to @retvalOUT variable.
+		/// </summary>
+		private const string SQL_FORMAT_CREATE_NOTIFICATION_TRIGGER = @"
                 CREATE TRIGGER [{1}]
                 ON {5}.[{0}]
                 AFTER {2} 
@@ -338,18 +326,18 @@ namespace ServiceBrokerListener.Domain
                 END
             ";
 
-        #endregion
+		#endregion
 
-        #region Miscellaneous
+		#region Miscellaneous
 
-        /// <summary>
-        /// T-SQL script-template which helps to receive changed data in monitorable table.
-        /// {0} - database name.
-        /// {1} - conversation queue name.
-        /// {2} - timeout.
-        /// {3} - schema name.
-        /// </summary>
-        private const string SQL_FORMAT_RECEIVE_EVENT = @"
+		/// <summary>
+		/// T-SQL script-template which helps to receive changed data in monitorable table.
+		/// {0} - database name.
+		/// {1} - conversation queue name.
+		/// {2} - timeout.
+		/// {3} - schema name.
+		/// </summary>
+		private const string SQL_FORMAT_RECEIVE_EVENT = @"
                 DECLARE @ConvHandle UNIQUEIDENTIFIER
                 DECLARE @message VARBINARY(MAX)
                 USE [{0}]
@@ -360,23 +348,23 @@ namespace ServiceBrokerListener.Domain
                 SELECT CAST(@message AS NVARCHAR(MAX)) 
             ";
 
-        /// <summary>
-        /// T-SQL script-template which executes stored procedure.
-        /// {0} - database name.
-        /// {1} - procedure name.
-        /// {2} - schema name.
-        /// </summary>
-        private const string SQL_FORMAT_EXECUTE_PROCEDURE = @"
+		/// <summary>
+		/// T-SQL script-template which executes stored procedure.
+		/// {0} - database name.
+		/// {1} - procedure name.
+		/// {2} - schema name.
+		/// </summary>
+		private const string SQL_FORMAT_EXECUTE_PROCEDURE = @"
                 USE [{0}]
                 IF OBJECT_ID ('{2}.{1}', 'P') IS NOT NULL
                     EXEC {2}.{1}
             ";
 
-        /// <summary>
-        /// T-SQL script-template which returns all dependency identities in the database.
-        /// {0} - database name.
-        /// </summary>
-        private const string SQL_FORMAT_GET_DEPENDENCY_IDENTITIES = @"
+		/// <summary>
+		/// T-SQL script-template which returns all dependency identities in the database.
+		/// {0} - database name.
+		/// </summary>
+		private const string SQL_FORMAT_GET_DEPENDENCY_IDENTITIES = @"
                 USE [{0}]
                 
                 SELECT REPLACE(name , 'ListenerService_' , '') 
@@ -384,15 +372,15 @@ namespace ServiceBrokerListener.Domain
                 WHERE [name] like 'ListenerService_%';
             ";
 
-        #endregion
+		#endregion
 
-        #region Forced cleaning of database
+		#region Forced cleaning of database
 
-        /// <summary>
-        /// T-SQL script-template which cleans database from notifications.
-        /// {0} - database name.
-        /// </summary>
-        private const string SQL_FORMAT_FORCED_DATABASE_CLEANING = @"
+		/// <summary>
+		/// T-SQL script-template which cleans database from notifications.
+		/// {0} - database name.
+		/// </summary>
+		private const string SQL_FORMAT_FORCED_DATABASE_CLEANING = @"
                 USE [{0}]
 
                 DECLARE @db_name VARCHAR(MAX)
@@ -443,353 +431,339 @@ namespace ServiceBrokerListener.Domain
                 DEALLOCATE procedures;
             ";
 
-        #endregion
+		#endregion
 
-        #endregion
+		#endregion
 
-        private const int COMMAND_TIMEOUT = 60000;
+		private const int COMMAND_TIMEOUT = 60000;
 
-        private static readonly List<int> ActiveEntities = new List<int>();
+		private static readonly List<int> ActiveEntities = new List<int>();
+		private static TimeSpan _notificationDelay;
 
-        private CancellationTokenSource _threadSource;
+		private CancellationTokenSource _threadSource;
 
-        public string ConversationQueueName
-        {
-            get
-            {
-                return string.Format("ListenerQueue_{0}", this.Identity);
-            }
-        }
+		public string ConversationQueueName => $"ListenerQueue_{Identity}";
 
-        public string ConversationServiceName
-        {
-            get
-            {
-                return string.Format("ListenerService_{0}", this.Identity);
-            }
-        }
+		public string ConversationServiceName => $"ListenerService_{Identity}";
 
-        public string ConversationTriggerName
-        {
-            get
-            {
-                return string.Format("tr_Listener_{0}", this.Identity);
-            }
-        }
+		public string ConversationTriggerName => $"tr_Listener_{Identity}";
 
-        public string InstallListenerProcedureName
-        {
-            get
-            {
-                return string.Format("sp_InstallListenerNotification_{0}", this.Identity);
-            }
-        }
+		public string InstallListenerProcedureName => $"sp_InstallListenerNotification_{Identity}";
 
-        public string UninstallListenerProcedureName
-        {
-            get
-            {
-                return string.Format("sp_UninstallListenerNotification_{0}", this.Identity);
-            }
-        }
+		public string UninstallListenerProcedureName => $"sp_UninstallListenerNotification_{Identity}";
 
-        public string ConnectionString { get; private set; }
+		public string ConnectionString { get; private set; }
 
-        public string DatabaseName { get; private set; }
+		public string DatabaseName { get; private set; }
 
-        public string TableName { get; private set; }
+		public string TableName { get; private set; }
 
-        public string SchemaName { get; private set; }
+		public string SchemaName { get; private set; }
 
-        public NotificationTypes NotificaionTypes { get; private set; }
+		public NotificationTypes Notifications { get; private set; }
 
-        public bool DetailsIncluded { get; private set; }
+		public bool DetailsIncluded { get; private set; }
 
-        public int Identity
-        {
-            get;
-            private set;
-        }
+		public int Identity { get; private set; }
 
-        public bool Active { get; private set; }
+		public bool Active { get; private set; }
 
-        public event EventHandler<TableChangedEventArgs> TableChanged;
+		public event EventHandler<TableChangedEventArgs> TableChanged;
 
-        public event EventHandler NotificationProcessStopped;
+		public event EventHandler NotificationProcessStopped;
 
-        public SqlDependencyEx(
-            string connectionString,
-            string databaseName,
-            string tableName,
-            string schemaName = "dbo",
-            NotificationTypes listenerType =
-                NotificationTypes.Insert | NotificationTypes.Update | NotificationTypes.Delete,
-            bool receiveDetails = true, int identity = 1)
-        {
-            this.ConnectionString = connectionString;
-            this.DatabaseName = databaseName;
-            this.TableName = tableName;
-            this.SchemaName = schemaName;
-            this.NotificaionTypes = listenerType;
-            this.DetailsIncluded = receiveDetails;
-            this.Identity = identity;
-        }
+		public SqlDependencyEx(
+			string connectionString,
+			string databaseName,
+			string tableName,
+			string schemaName = "dbo",
+			NotificationTypes listenerType =
+				NotificationTypes.Insert | NotificationTypes.Update | NotificationTypes.Delete,
+			bool receiveDetails = true, int identity = 1)
+		{
+			ConnectionString = connectionString;
+			DatabaseName = databaseName;
+			TableName = tableName;
+			SchemaName = schemaName;
+			Notifications = listenerType;
+			DetailsIncluded = receiveDetails;
+			Identity = identity;
+		}
 
-        public void Start()
-        {
-            lock (ActiveEntities)
-            {
-                if (ActiveEntities.Contains(this.Identity))
-                    throw new InvalidOperationException("An object with the same identity has already been started.");
-                ActiveEntities.Add(this.Identity);
-            }
+		public void Start()
+		{
+			lock (ActiveEntities)
+			{
+				if (ActiveEntities.Contains(Identity))
+					throw new InvalidOperationException("An object with the same identity has already been started.");
+				ActiveEntities.Add(Identity);
+			}
 
-            // ASP.NET fix 
-            // IIS is not usually restarted when a new website version is deployed
-            // This situation leads to notification absence in some cases
-            this.Stop();
+			// ASP.NET fix 
+			// IIS is not usually restarted when a new website version is deployed
+			// This situation leads to notification absence in some cases
+			Stop();
 
-            this.InstallNotification();
+			InstallNotification();
 
-            _threadSource = new CancellationTokenSource();
+			_threadSource = new CancellationTokenSource();
 
-            // Pass the token to the cancelable operation.
-            ThreadPool.QueueUserWorkItem(NotificationLoop, _threadSource.Token);
-        }
+			// Use thead pool to start a background thread
+			ThreadPool.QueueUserWorkItem(NotificationListener, _threadSource.Token);
+		}
 
-        public void Stop()
-        {
-            UninstallNotification();
+		public void Stop()
+		{
+			UninstallNotification();
+			lock (ActiveEntities)
+				if (ActiveEntities.Contains(Identity)) ActiveEntities.Remove(Identity);
 
-            lock (ActiveEntities)
-                if (ActiveEntities.Contains(Identity)) ActiveEntities.Remove(Identity);
+			if ((_threadSource == null) || (_threadSource.Token.IsCancellationRequested))
+			{
+				return;
+			}
 
-            if ((_threadSource == null) || (_threadSource.Token.IsCancellationRequested))
-            {
-                return;
-            }
+			if (!_threadSource.Token.CanBeCanceled)
+			{
+				return;
+			}
 
-            if (!_threadSource.Token.CanBeCanceled)
-            {
-                return;
-            }
+			_threadSource.Cancel();
+			_threadSource.Dispose();
+		}
 
-            _threadSource.Cancel();
-            _threadSource.Dispose();
-        }
+		public void Dispose()
+		{
+			Stop();
+		}
 
-        public void Dispose()
-        {
-            Stop();
-        }
+		public static int[] GetDependencyDbIdentities(string connectionString, string database)
+		{
+			if (connectionString == null)
+			{
+				throw new ArgumentNullException("connectionString");
+			}
 
-        public static int[] GetDependencyDbIdentities(string connectionString, string database)
-        {
-            if (connectionString == null)
-            {
-                throw new ArgumentNullException("connectionString");
-            }
+			if (database == null)
+			{
+				throw new ArgumentNullException("database");
+			}
 
-            if (database == null)
-            {
-                throw new ArgumentNullException("database");
-            }
+			var result = new List<string>();
 
-            List<string> result = new List<string>();
+			using (var connection = new SqlConnection(connectionString))
+			using (var command = connection.CreateCommand())
+			{
+				connection.Open();
+				command.CommandText = string.Format(SQL_FORMAT_GET_DEPENDENCY_IDENTITIES, database);
+				command.CommandType = CommandType.Text;
+				using (var reader = command.ExecuteReader())
+					while (reader.Read())
+						result.Add(reader.GetString(0));
+			}
 
-            using (SqlConnection connection = new SqlConnection(connectionString))
-            using (SqlCommand command = connection.CreateCommand())
-            {
-                connection.Open();
-                command.CommandText = string.Format(SQL_FORMAT_GET_DEPENDENCY_IDENTITIES, database);
-                command.CommandType = CommandType.Text;
-                using (SqlDataReader reader = command.ExecuteReader())
-                    while (reader.Read())
-                        result.Add(reader.GetString(0));
-            }
+			return
+				result.Select(p => int.TryParse(p, out int temp) ? temp : -1)
+					.Where(p => p != -1)
+					.ToArray();
+		}
 
-            int temp;
-            return
-                result.Select(p => int.TryParse(p, out temp) ? temp : -1)
-                    .Where(p => p != -1)
-                    .ToArray();
-        }
+		public static void CleanDatabase(string connectionString, string database)
+		{
+			ExecuteNonQuery(
+				string.Format(SQL_FORMAT_FORCED_DATABASE_CLEANING, database),
+				connectionString);
+		}
 
-        public static void CleanDatabase(string connectionString, string database)
-        {
-            ExecuteNonQuery(
-                string.Format(SQL_FORMAT_FORCED_DATABASE_CLEANING, database),
-                connectionString);
-        }
+		private void NotificationListener(object cancelToken)
+		{
+			var threadParams = StartNotificationLoop((CancellationToken) cancelToken);
+			var newThread = new Thread(threadParams)
+			{
+				IsBackground = true,
+				Name = $"{this.GetType().Name}_{Guid.NewGuid()}"
+			};
+			newThread.Start(cancelToken);
+		}
 
-        private void NotificationLoop(object input)
-        {
-            try
-            {
-                while (true)
-                {
-                    var message = ReceiveEvent();
-                    Active = true;
-                    if (!string.IsNullOrWhiteSpace(message))
-                    {
-                        OnTableChanged(message);
-                    }
-                }
-            }
-            catch
-            {
-                // ignored
-            }
-            finally
-            {
-                Active = false;
-                OnNotificationProcessStopped();
-            }
-        }
+		private ParameterizedThreadStart StartNotificationLoop(CancellationToken token)
+		{
+			var threadParams = new ParameterizedThreadStart(o =>
+			{
+				NotificationControl(token);
+			});
+			return threadParams;
+		}
 
-        private static void ExecuteNonQuery(string commandText, string connectionString)
-        {
-            using (SqlConnection conn = new SqlConnection(connectionString))
-            using (SqlCommand command = new SqlCommand(commandText, conn))
-            {
-                conn.Open();
-                command.CommandType = CommandType.Text;
-                command.ExecuteNonQuery();
-            }
-        }
+		private void NotificationControl(CancellationToken token)
+		{
+			try
+			{
+				NotificationLoop(token);
+			}
+			catch (Exception e)
+			{
+				// ignored because why the fuck not
+			}
+			finally
+			{
+				Active = false;
+				OnNotificationProcessStopped();
+			}
+		}
 
-        private string ReceiveEvent()
-        {
-            var commandText = string.Format(
-                SQL_FORMAT_RECEIVE_EVENT,
-                this.DatabaseName,
-                this.ConversationQueueName,
-                COMMAND_TIMEOUT / 2,
-                this.SchemaName);
+		private void NotificationLoop(CancellationToken token)
+		{
+			while (!token.IsCancellationRequested)
+			{
+				var message = ReceiveEvent(); // This blocks until event received
+				Active = true;
+				if (!string.IsNullOrWhiteSpace(message))
+				{
+					OnTableChanged(message);
+				}
+			}
+		}
 
-            using (SqlConnection conn = new SqlConnection(this.ConnectionString))
-            using (SqlCommand command = new SqlCommand(commandText, conn))
-            {
-                conn.Open();
-                command.CommandType = CommandType.Text;
-                command.CommandTimeout = COMMAND_TIMEOUT;
-                using (var reader = command.ExecuteReader())
-                {
-                    if (!reader.Read() || reader.IsDBNull(0)) return string.Empty;
+		private static void ExecuteNonQuery(string commandText, string connectionString)
+		{
+			using (var conn = new SqlConnection(connectionString))
+			using (var command = new SqlCommand(commandText, conn))
+			{
+				conn.Open();
+				command.CommandType = CommandType.Text;
+				command.ExecuteNonQuery();
+			}
+		}
 
-                    return reader.GetString(0);
-                }
-            }
-        }
+		private string ReceiveEvent()
+		{
+			var commandText = string.Format(
+				SQL_FORMAT_RECEIVE_EVENT,
+				DatabaseName,
+				ConversationQueueName,
+				COMMAND_TIMEOUT / 2,
+				SchemaName);
 
-        private string GetUninstallNotificationProcedureScript()
-        {
-            string uninstallServiceBrokerNotificationScript = string.Format(
-                SQL_FORMAT_UNINSTALL_SERVICE_BROKER_NOTIFICATION,
-                this.ConversationQueueName,
-                this.ConversationServiceName,
-                this.SchemaName);
-            string uninstallNotificationTriggerScript = string.Format(
-                SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER,
-                this.ConversationTriggerName,
-                this.SchemaName);
-            string uninstallationProcedureScript =
-                string.Format(
-                    SQL_FORMAT_CREATE_UNINSTALLATION_PROCEDURE,
-                    this.DatabaseName,
-                    this.UninstallListenerProcedureName,
-                    uninstallServiceBrokerNotificationScript.Replace("'", "''"),
-                    uninstallNotificationTriggerScript.Replace("'", "''"),
-                    this.SchemaName,
-                    this.InstallListenerProcedureName);
-            return uninstallationProcedureScript;
-        }
+			using (var conn = new SqlConnection(ConnectionString))
+			using (var command = new SqlCommand(commandText, conn))
+			{
+				conn.Open();
+				command.CommandType = CommandType.Text;
+				command.CommandTimeout = COMMAND_TIMEOUT;
+				using (var reader = command.ExecuteReader())
+				{
+					if (!reader.Read() || reader.IsDBNull(0)) return string.Empty;
 
-        private string GetInstallNotificationProcedureScript()
-        {
-            string installServiceBrokerNotificationScript = string.Format(
-                SQL_FORMAT_INSTALL_SEVICE_BROKER_NOTIFICATION,
-                this.DatabaseName,
-                this.ConversationQueueName,
-                this.ConversationServiceName,
-                this.SchemaName);
-            string installNotificationTriggerScript =
-                string.Format(
-                    SQL_FORMAT_CREATE_NOTIFICATION_TRIGGER,
-                    this.TableName,
-                    this.ConversationTriggerName,
-                    GetTriggerTypeByListenerType(),
-                    this.ConversationServiceName,
-                    this.DetailsIncluded ? string.Empty : @"NOT",
-                    this.SchemaName);
-            string uninstallNotificationTriggerScript =
-                string.Format(
-                    SQL_FORMAT_CHECK_NOTIFICATION_TRIGGER,
-                    this.ConversationTriggerName,
-                    this.SchemaName);
-            string installationProcedureScript =
-                string.Format(
-                    SQL_FORMAT_CREATE_INSTALLATION_PROCEDURE,
-                    this.DatabaseName,
-                    this.InstallListenerProcedureName,
-                    installServiceBrokerNotificationScript.Replace("'", "''"),
-                    installNotificationTriggerScript.Replace("'", "''''"),
-                    uninstallNotificationTriggerScript.Replace("'", "''"),
-                    this.TableName,
-                    this.SchemaName);
-            return installationProcedureScript;
-        }
+					return reader.GetString(0);
+				}
+			}
+		}
 
-        private string GetTriggerTypeByListenerType()
-        {
-            StringBuilder result = new StringBuilder();
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.Insert))
-                result.Append("INSERT");
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.Update))
-                result.Append(result.Length == 0 ? "UPDATE" : ", UPDATE");
-            if (this.NotificaionTypes.HasFlag(NotificationTypes.Delete))
-                result.Append(result.Length == 0 ? "DELETE" : ", DELETE");
-            if (result.Length == 0) result.Append("INSERT");
+		private string GetUninstallNotificationProcedureScript()
+		{
+			var uninstallServiceBrokerNotificationScript = string.Format(
+				SQL_FORMAT_UNINSTALL_SERVICE_BROKER_NOTIFICATION,
+				ConversationQueueName,
+				ConversationServiceName,
+				SchemaName);
+			var uninstallNotificationTriggerScript = string.Format(
+				SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER,
+				ConversationTriggerName,
+				SchemaName);
+			var uninstallationProcedureScript =
+				string.Format(
+					SQL_FORMAT_CREATE_UNINSTALLATION_PROCEDURE,
+					DatabaseName,
+					UninstallListenerProcedureName,
+					uninstallServiceBrokerNotificationScript.Replace("'", "''"),
+					uninstallNotificationTriggerScript.Replace("'", "''"),
+					SchemaName,
+					InstallListenerProcedureName);
+			return uninstallationProcedureScript;
+		}
 
-            return result.ToString();
-        }
+		private string GetInstallNotificationProcedureScript()
+		{
+			var installServiceBrokerNotificationScript = string.Format(
+				SQL_FORMAT_INSTALL_SEVICE_BROKER_NOTIFICATION,
+				DatabaseName,
+				ConversationQueueName,
+				ConversationServiceName,
+				SchemaName);
+			var installNotificationTriggerScript =
+				string.Format(
+					SQL_FORMAT_CREATE_NOTIFICATION_TRIGGER,
+					TableName,
+					ConversationTriggerName,
+					GetTriggerTypeByListenerType(),
+					ConversationServiceName,
+					DetailsIncluded ? string.Empty : @"NOT",
+					SchemaName);
+			var uninstallNotificationTriggerScript =
+				string.Format(
+					SQL_FORMAT_CHECK_NOTIFICATION_TRIGGER,
+					ConversationTriggerName,
+					SchemaName);
+			var installationProcedureScript =
+				string.Format(
+					SQL_FORMAT_CREATE_INSTALLATION_PROCEDURE,
+					DatabaseName,
+					InstallListenerProcedureName,
+					installServiceBrokerNotificationScript.Replace("'", "''"),
+					installNotificationTriggerScript.Replace("'", "''''"),
+					uninstallNotificationTriggerScript.Replace("'", "''"),
+					TableName,
+					SchemaName);
+			return installationProcedureScript;
+		}
 
-        private void UninstallNotification()
-        {
-            string execUninstallationProcedureScript = string.Format(
-                SQL_FORMAT_EXECUTE_PROCEDURE,
-                this.DatabaseName,
-                this.UninstallListenerProcedureName,
-                this.SchemaName);
-            ExecuteNonQuery(execUninstallationProcedureScript, this.ConnectionString);
-        }
+		private string GetTriggerTypeByListenerType()
+		{
+			var result = new StringBuilder();
+			if (Notifications.HasFlag(NotificationTypes.Insert))
+				result.Append("INSERT");
+			if (Notifications.HasFlag(NotificationTypes.Update))
+				result.Append(result.Length == 0 ? "UPDATE" : ", UPDATE");
+			if (Notifications.HasFlag(NotificationTypes.Delete))
+				result.Append(result.Length == 0 ? "DELETE" : ", DELETE");
+			if (result.Length == 0) result.Append("INSERT");
 
-        private void InstallNotification()
-        {
-            string execInstallationProcedureScript = string.Format(
-                SQL_FORMAT_EXECUTE_PROCEDURE,
-                this.DatabaseName,
-                this.InstallListenerProcedureName,
-                this.SchemaName);
-            ExecuteNonQuery(GetInstallNotificationProcedureScript(), this.ConnectionString);
-            ExecuteNonQuery(GetUninstallNotificationProcedureScript(), this.ConnectionString);
-            ExecuteNonQuery(execInstallationProcedureScript, this.ConnectionString);
-        }
+			return result.ToString();
+		}
 
-        private void OnTableChanged(string message)
-        {
-            var evnt = this.TableChanged;
-            if (evnt == null) return;
+		private void UninstallNotification()
+		{
+			var execUninstallationProcedureScript = string.Format(
+				SQL_FORMAT_EXECUTE_PROCEDURE,
+				DatabaseName,
+				UninstallListenerProcedureName,
+				SchemaName);
+			ExecuteNonQuery(execUninstallationProcedureScript, ConnectionString);
+		}
 
-            evnt.Invoke(this, new TableChangedEventArgs(message));
-        }
+		private void InstallNotification()
+		{
+			var execInstallationProcedureScript = string.Format(
+				SQL_FORMAT_EXECUTE_PROCEDURE,
+				DatabaseName,
+				InstallListenerProcedureName,
+				SchemaName);
+			ExecuteNonQuery(GetInstallNotificationProcedureScript(), ConnectionString);
+			ExecuteNonQuery(GetUninstallNotificationProcedureScript(), ConnectionString);
+			ExecuteNonQuery(execInstallationProcedureScript, ConnectionString);
+		}
 
-        private void OnNotificationProcessStopped()
-        {
-            var evnt = NotificationProcessStopped;
-            if (evnt == null) return;
+		private void OnTableChanged(string message)
+		{
+			var evnt = TableChanged;
+			evnt?.Invoke(this, new TableChangedEventArgs(message));
+		}
 
-            evnt.BeginInvoke(this, EventArgs.Empty, null, null);
-        }
-    }
+		private void OnNotificationProcessStopped()
+		{
+			var evnt = NotificationProcessStopped;
+			evnt?.BeginInvoke(this, EventArgs.Empty, null, null);
+		}
+	}
 }

@@ -36,12 +36,12 @@
 
             if (string.IsNullOrWhiteSpace(json)) return "EMPTY";
 
-            dynamic obj = System.Web.Helpers.Json.Decode(json);
+            var obj = System.Web.Helpers.Json.Decode(json);
 
             if (obj[CoordidatesPropertyName] == null) return "EMPTY";
 
             var arr = obj[CoordidatesPropertyName];
-            for (int i = 0; i < arr.Length; i++)
+            for (var i = 0; i < arr.Length; i++)
             {
                 int row = arr[i][0];
                 int col = arr[i][1];

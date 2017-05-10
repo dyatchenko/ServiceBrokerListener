@@ -38,10 +38,10 @@ namespace ServiceBrokerListener.WebUI.Infrastructure
                         new TableRow {A = "Year", B = "Maserati", C = "Mazda", D = "Mercedes", E = "Mini", F = "Mitsubishi"},
                         new TableRow {A = "2009", B = "0", C = "2941", D = "4303", E = "354", F = "5814"}
                     };
-            for (int i = 0; i < 12; i++)
+            for (var i = 0; i < 12; i++)
                 list.Add(new TableRow { A = "2009", B = "0", C = "2941", D = "4303", E = "354", F = "6456645" });
 
-            Mock<ITableRowRepository> mock = new Mock<ITableRowRepository>();
+            var mock = new Mock<ITableRowRepository>();
             mock.Setup(m => m.Rows).Returns(list);
 
             mock.Setup(m => m.UpdateRow(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>()))

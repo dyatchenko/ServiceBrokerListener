@@ -20,13 +20,13 @@
     public class SqlDependencyExTest
     {
         private const string MASTER_CONNECTION_STRING =
-            "Data Source=(local);Initial Catalog=master;Integrated Security=True";
+            "Data Source=ruby;Initial Catalog=master;Integrated Security=True";
 
         private const string TEST_CONNECTION_STRING =
-            "Data Source=(local);Initial Catalog=TestDatabase;User Id=TempLogin;Password=8fdKJl3$nlNv3049jsKK;";
+            "Data Source=ruby;Initial Catalog=TestDatabase;User Id=TempLogin;Password=8fdKJl3$nlNv3049jsKK;";
 
         private const string ADMIN_TEST_CONNECTION_STRING =
-            "Data Source=(local);Initial Catalog=TestDatabase;Integrated Security=True";
+            "Data Source=ruby;Initial Catalog=TestDatabase;Integrated Security=True";
 
         private const string INSERT_FORMAT =
             "USE [TestDatabase] INSERT INTO temp.[TestTable] (TestField) VALUES({0})";
@@ -234,10 +234,10 @@
         public void MainPermissionExceptionCheckTest()
         {
             ExecuteNonQuery("USE [TestDatabase] DENY CREATE PROCEDURE TO [TempUser];", MASTER_CONNECTION_STRING);
-            bool errorReceived = false;
+            var errorReceived = false;
             try
             {
-                using (SqlDependencyEx test = new SqlDependencyEx(
+                using (var test = new SqlDependencyEx(
                         TEST_CONNECTION_STRING,
                         TEST_DATABASE_NAME,
                         TEST_TABLE_NAME,
@@ -252,7 +252,7 @@
             errorReceived = false;
             try
             {
-                using (SqlDependencyEx test = new SqlDependencyEx(
+                using (var test = new SqlDependencyEx(
                         TEST_CONNECTION_STRING,
                         TEST_DATABASE_NAME,
                         TEST_TABLE_NAME,
@@ -263,7 +263,7 @@
             Assert.AreEqual(false, errorReceived);
 
             // There is supposed to be no exceptions with admin rights.
-            using (SqlDependencyEx test = new SqlDependencyEx(
+            using (var test = new SqlDependencyEx(
                     MASTER_CONNECTION_STRING,
                     TEST_DATABASE_NAME,
                     TEST_TABLE_NAME,
@@ -280,10 +280,10 @@
 
             // It is impossible to start notification without configured service broker.
             ExecuteNonQuery(ScriptDisableBroker, MASTER_CONNECTION_STRING);
-            bool errorReceived = false;
+            var errorReceived = false;
             try
             {
-                using (SqlDependencyEx test = new SqlDependencyEx(
+                using (var test = new SqlDependencyEx(
                         TEST_CONNECTION_STRING,
                         TEST_DATABASE_NAME,
                         TEST_TABLE_NAME,
@@ -368,15 +368,15 @@
         [Test]
         public void TwoTablesNotificationsTest()
         {
-            int table1InsertsReceived = 0;
-            int table1DeletesReceived = 0;
-            int table1TotalNotifications = 0;
-            int table1TotalDeleted = 0;
+            var table1InsertsReceived = 0;
+            var table1DeletesReceived = 0;
+            var table1TotalNotifications = 0;
+            var table1TotalDeleted = 0;
 
-            int table2InsertsReceived = 0;
-            int table2DeletesReceived = 0;
-            int table2TotalNotifications = 0;
-            int table2TotalInserted = 0;
+            var table2InsertsReceived = 0;
+            var table2DeletesReceived = 0;
+            var table2TotalNotifications = 0;
+            var table2TotalInserted = 0;
 
             using (var sqlDependencyFirstTable = new SqlDependencyEx(
                            TEST_CONNECTION_STRING,
@@ -473,10 +473,10 @@
         [Test]
         public void NullCharacterInsertTest()
         {
-            int table1InsertsReceived = 0;
-            int table1DeletesReceived = 0;
-            int table1TotalNotifications = 0;
-            int table1TotalDeleted = 0;
+            var table1InsertsReceived = 0;
+            var table1DeletesReceived = 0;
+            var table1TotalNotifications = 0;
+            var table1TotalDeleted = 0;
 
             using (var sqlDependencyFirstTable = new SqlDependencyEx(
                            TEST_CONNECTION_STRING,
@@ -523,10 +523,10 @@
         [Test]
         public void SpecialTableNameWithoutSquareBracketsTest()
         {
-            int table1InsertsReceived = 0;
-            int table1DeletesReceived = 0;
-            int table1TotalNotifications = 0;
-            int table1TotalDeleted = 0;
+            var table1InsertsReceived = 0;
+            var table1DeletesReceived = 0;
+            var table1TotalNotifications = 0;
+            var table1TotalDeleted = 0;
 
             using (var sqlDependencyFirstTable = new SqlDependencyEx(
                            TEST_CONNECTION_STRING,
@@ -573,10 +573,10 @@
         [Test]
         public void SpecialFieldNameWithoutSquareBracketsTest()
         {
-            int table1InsertsReceived = 0;
-            int table1DeletesReceived = 0;
-            int table1TotalNotifications = 0;
-            int table1TotalDeleted = 0;
+            var table1InsertsReceived = 0;
+            var table1DeletesReceived = 0;
+            var table1TotalNotifications = 0;
+            var table1TotalDeleted = 0;
 
             using (var sqlDependencyFirstTable = new SqlDependencyEx(
                            TEST_CONNECTION_STRING,
@@ -623,10 +623,10 @@
         [Test]
         public void UnsupportedFieldTypeTest()
         {
-            int table1InsertsReceived = 0;
-            int table1DeletesReceived = 0;
-            int table1TotalNotifications = 0;
-            int table1TotalDeleted = 0;
+            var table1InsertsReceived = 0;
+            var table1DeletesReceived = 0;
+            var table1TotalNotifications = 0;
+            var table1TotalDeleted = 0;
 
             using (var sqlDependencyFirstTable = new SqlDependencyEx(
                            TEST_CONNECTION_STRING,
@@ -682,14 +682,14 @@
             {
                 sqlConnection.Open();
 
-                int sqlConversationEndpointsCount = sqlConnection.GetUnclosedConversationEndpointsCount();
-                int sqlConversationGroupsCount = sqlConnection.GetConversationGroupsCount();
-                int sqlServiceQueuesCount = sqlConnection.GetServiceQueuesCount();
-                int sqlServicesCount = sqlConnection.GetServicesCount();
-                int sqlTriggersCount = sqlConnection.GetTriggersCount();
-                int sqlProceduresCount = sqlConnection.GetProceduresCount();
+                var sqlConversationEndpointsCount = sqlConnection.GetUnclosedConversationEndpointsCount();
+                var sqlConversationGroupsCount = sqlConnection.GetConversationGroupsCount();
+                var sqlServiceQueuesCount = sqlConnection.GetServiceQueuesCount();
+                var sqlServicesCount = sqlConnection.GetServicesCount();
+                var sqlTriggersCount = sqlConnection.GetTriggersCount();
+                var sqlProceduresCount = sqlConnection.GetProceduresCount();
 
-                using (SqlDependencyEx sqlDependency = new SqlDependencyEx(
+                using (var sqlDependency = new SqlDependencyEx(
                             TEST_CONNECTION_STRING,
                             TEST_DATABASE_NAME,
                             TEST_TABLE_NAME, "temp"))
@@ -731,9 +731,9 @@
             int changesDelayInSec = 0,
             string connStr = TEST_CONNECTION_STRING)
         {
-            int changesReceived = 0;
+            var changesReceived = 0;
 
-            using (SqlDependencyEx sqlDependency = new SqlDependencyEx(
+            using (var sqlDependency = new SqlDependencyEx(
                         connStr,
                         TEST_DATABASE_NAME,
                         TEST_TABLE_NAME, "temp")) 
@@ -769,9 +769,9 @@
 
         private static void NotificationTypeTest(int insertsCount, SqlDependencyEx.NotificationTypes testType)
         {
-            int elementsInDetailsCount = 0;
-            int changesReceived = 0;
-            int expectedElementsInDetails = 0;
+            var elementsInDetailsCount = 0;
+            var changesReceived = 0;
+            var expectedElementsInDetails = 0;
 
             var notificationTypes = GetMembers(testType);
             foreach (var temp in notificationTypes)
@@ -788,7 +788,7 @@
                     break;
             }
 
-            using (SqlDependencyEx sqlDependency = new SqlDependencyEx(
+            using (var sqlDependency = new SqlDependencyEx(
                         TEST_CONNECTION_STRING,
                         TEST_DATABASE_NAME,
                         TEST_TABLE_NAME, "temp", testType))
@@ -823,10 +823,10 @@
 
         private static void DetailsTest(int insertsCount)
         {
-            int elementsInDetailsCount = 0;
-            int changesReceived = 0;
+            var elementsInDetailsCount = 0;
+            var changesReceived = 0;
 
-            using (SqlDependencyEx sqlDependency = new SqlDependencyEx(
+            using (var sqlDependency = new SqlDependencyEx(
                         TEST_CONNECTION_STRING,
                         TEST_DATABASE_NAME,
                         TEST_TABLE_NAME, "temp"))
@@ -864,9 +864,9 @@
             int changesDelayInSec = 0,
             string connStr = TEST_CONNECTION_STRING)
         {
-            int changesReceived = 0;
+            var changesReceived = 0;
 
-            using (SqlDependencyEx sqlDependency = new SqlDependencyEx(
+            using (var sqlDependency = new SqlDependencyEx(
                         connStr,
                         TEST_DATABASE_NAME,
                         TEST_TABLE_NAME, "temp", receiveDetails: false))
@@ -895,8 +895,8 @@
             const string ScriptFormat = "INSERT INTO #TmpTbl VALUES({0}, N'{1}')\r\n";
 
             // insert unicode statement
-            StringBuilder scriptResult = new StringBuilder("SELECT 0 AS Number, N'юникод<>_1000001' AS Str INTO #TmpTbl\r\n");
-            for (int i = 1; i < changesCount / 2; i++) scriptResult.Append(string.Format(ScriptFormat, i, "юникод<>_" + i));
+            var scriptResult = new StringBuilder("SELECT 0 AS Number, N'юникод<>_1000001' AS Str INTO #TmpTbl\r\n");
+            for (var i = 1; i < changesCount / 2; i++) scriptResult.Append(string.Format(ScriptFormat, i, "юникод<>_" + i));
 
             scriptResult.Append(@"INSERT INTO temp.TestTable (TestField, StrField)   
                                             SELECT * FROM #TmpTbl");
@@ -910,8 +910,8 @@
             const string ScriptFormat = "INSERT INTO #TmpTbl VALUES({0}, N'{1}')\r\n";
 
             // insert a unicode statement
-            StringBuilder scriptResult = new StringBuilder("SELECT 0 AS Number, N'юникод<>_1000001' AS Str INTO #TmpTbl\r\n");
-            for (int i = 1; i < chunkSize; i++) scriptResult.Append(string.Format(ScriptFormat, i, "юникод<>_" + i));
+            var scriptResult = new StringBuilder("SELECT 0 AS Number, N'юникод<>_1000001' AS Str INTO #TmpTbl\r\n");
+            for (var i = 1; i < chunkSize; i++) scriptResult.Append(string.Format(ScriptFormat, i, "юникод<>_" + i));
 
             scriptResult.Append($"INSERT INTO {tableName} (TestField, StrField) SELECT * FROM #TmpTbl");
             ExecuteNonQuery(scriptResult.ToString(), TEST_CONNECTION_STRING);
@@ -920,7 +920,7 @@
         private static void MakeNullCharacterInsert(string tableName = "temp.TestTable", string firstFieldName = "TestField", string secondFieldName = "StrField")
         {
             // insert a unicode statement
-            StringBuilder scriptResult = new StringBuilder("SELECT 0 AS Number, CONVERT(VARCHAR(MAX), 0x00) AS Str INTO #TmpTbl\r\n");
+            var scriptResult = new StringBuilder("SELECT 0 AS Number, CONVERT(VARCHAR(MAX), 0x00) AS Str INTO #TmpTbl\r\n");
 
             scriptResult.Append($"INSERT INTO {tableName} ({firstFieldName}, {secondFieldName}) SELECT * FROM #TmpTbl");
             ExecuteNonQuery(scriptResult.ToString(), TEST_CONNECTION_STRING);
@@ -928,7 +928,7 @@
 
         private static void DeleteFirstRow(string tableName = "temp.TestTable")
         {
-            string script = $@"
+            var script = $@"
                 WITH q AS
                 (
                     SELECT TOP 1 *
@@ -941,7 +941,7 @@
 
         private static void MakeTableInsertDeleteChanges(int changesCount)
         {
-            for (int i = 0; i < changesCount / 2; i++)
+            for (var i = 0; i < changesCount / 2; i++)
             {
                 ExecuteNonQuery(string.Format(INSERT_FORMAT, i), MASTER_CONNECTION_STRING);
                 ExecuteNonQuery(string.Format(REMOVE_FORMAT, i), MASTER_CONNECTION_STRING);
@@ -950,8 +950,8 @@
 
         private static void ExecuteNonQuery(string commandText, string connectionString)
         {
-            using (SqlConnection conn = new SqlConnection(connectionString))
-            using (SqlCommand command = new SqlCommand(commandText, conn))
+            using (var conn = new SqlConnection(connectionString))
+            using (var command = new SqlCommand(commandText, conn))
             {
                 conn.Open();
                 command.CommandType = CommandType.Text;
