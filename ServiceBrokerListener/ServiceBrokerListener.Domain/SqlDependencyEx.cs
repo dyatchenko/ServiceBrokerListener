@@ -1,77 +1,15 @@
-﻿using System.IO;
-using System.Threading.Tasks;
-using System.Xml;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Xml.Linq;
 
 namespace ServiceBrokerListener.Domain
 {
 	public sealed class SqlDependencyEx : IDisposable
 	{
-		[Flags]
-		public enum NotificationTypes
-		{
-			None = 0,
-			Insert = 1 << 1,
-			Update = 1 << 2,
-			Delete = 1 << 3
-		}
-
-		public class TableChangedEventArgs : EventArgs
-		{
-			private readonly string notificationMessage;
-
-			private const string INSERTED_TAG = "inserted";
-
-			private const string DELETED_TAG = "deleted";
-
-			public TableChangedEventArgs(string notificationMessage)
-			{
-				this.notificationMessage = notificationMessage;
-			}
-
-			public XElement Data => string.IsNullOrWhiteSpace(notificationMessage)
-				? null
-				: ReadXDocumentWithInvalidCharacters(notificationMessage);
-
-			public NotificationTypes NotificationType => (Data?.Element(INSERTED_TAG)) != null
-				? (Data?.Element(DELETED_TAG)) != null
-					? NotificationTypes.Update
-					: NotificationTypes.Insert
-				: (Data?.Element(DELETED_TAG)) != null
-					? NotificationTypes.Delete
-					: NotificationTypes.None;
-
-			/// <summary>
-			/// Converts an xml string into XElement with no invalid characters check.
-			/// https://paulselles.wordpress.com/2013/07/03/parsing-xml-with-invalid-characters-in-c-2/
-			/// </summary>
-			/// <param name="xml">The input string.</param>
-			/// <returns>The result XElement.</returns>
-			private static XElement ReadXDocumentWithInvalidCharacters(string xml)
-			{
-				XDocument xDocument;
-
-				var xmlReaderSettings = new XmlReaderSettings {CheckCharacters = false};
-
-				using (var stream = new StringReader(xml))
-				using (var xmlReader = XmlReader.Create(stream, xmlReaderSettings))
-				{
-					// Load our XDocument
-					xmlReader.MoveToContent();
-					xDocument = XDocument.Load(xmlReader);
-				}
-
-				return xDocument.Root;
-			}
-		}
-
 		#region Scripts
 
 		#region Procedures
@@ -435,10 +373,9 @@ namespace ServiceBrokerListener.Domain
 
 		#endregion
 
-		private const int COMMAND_TIMEOUT = 60000;
+		private const int CommandTimeout = 60000;
 
 		private static readonly List<int> ActiveEntities = new List<int>();
-		private static TimeSpan _notificationDelay;
 
 		private CancellationTokenSource _threadSource;
 
@@ -452,14 +389,6 @@ namespace ServiceBrokerListener.Domain
 
 		public string UninstallListenerProcedureName => $"sp_UninstallListenerNotification_{Identity}";
 
-		public string ConnectionString { get; private set; }
-
-		public string DatabaseName { get; private set; }
-
-		public string TableName { get; private set; }
-
-		public string SchemaName { get; private set; }
-
 		public NotificationTypes Notifications { get; private set; }
 
 		public bool DetailsIncluded { get; private set; }
@@ -472,19 +401,15 @@ namespace ServiceBrokerListener.Domain
 
 		public event EventHandler NotificationProcessStopped;
 
-		public SqlDependencyEx(
-			string connectionString,
-			string databaseName,
-			string tableName,
-			string schemaName = "dbo",
-			NotificationTypes listenerType =
-				NotificationTypes.Insert | NotificationTypes.Update | NotificationTypes.Delete,
-			bool receiveDetails = true, int identity = 1)
+		private readonly SqlDependencyExOptions ConnectionOptions;
+
+		public SqlDependencyEx(SqlDependencyExOptions opts,
+			NotificationTypes listenerType = NotificationTypes.Insert | NotificationTypes.Update | NotificationTypes.Delete,
+			bool receiveDetails = true,
+			int identity = 1)
 		{
-			ConnectionString = connectionString;
-			DatabaseName = databaseName;
-			TableName = tableName;
-			SchemaName = schemaName;
+			ConnectionOptions = opts;
+			ConnectionOptions.SchemaName = opts.SchemaName ?? "dbo";
 			Notifications = listenerType;
 			DetailsIncluded = receiveDetails;
 			Identity = identity;
@@ -518,7 +443,7 @@ namespace ServiceBrokerListener.Domain
 			lock (ActiveEntities)
 				if (ActiveEntities.Contains(Identity)) ActiveEntities.Remove(Identity);
 
-			if ((_threadSource == null) || (_threadSource.Token.IsCancellationRequested))
+			if (_threadSource == null || _threadSource.Token.IsCancellationRequested)
 			{
 				return;
 			}
@@ -541,12 +466,12 @@ namespace ServiceBrokerListener.Domain
 		{
 			if (connectionString == null)
 			{
-				throw new ArgumentNullException("connectionString");
+				throw new ArgumentNullException(nameof(connectionString));
 			}
 
 			if (database == null)
 			{
-				throw new ArgumentNullException("database");
+				throw new ArgumentNullException(nameof(database));
 			}
 
 			var result = new List<string>();
@@ -638,19 +563,12 @@ namespace ServiceBrokerListener.Domain
 
 		private string ReceiveEvent()
 		{
-			var commandText = string.Format(
-				SQL_FORMAT_RECEIVE_EVENT,
-				DatabaseName,
-				ConversationQueueName,
-				COMMAND_TIMEOUT / 2,
-				SchemaName);
-
-			using (var conn = new SqlConnection(ConnectionString))
-			using (var command = new SqlCommand(commandText, conn))
+			using (var conn = new SqlConnection(ConnectionOptions.ConnectionString))
+			using (var command = new SqlCommand(SqlCommand(ConnectionOptions), conn))
 			{
 				conn.Open();
 				command.CommandType = CommandType.Text;
-				command.CommandTimeout = COMMAND_TIMEOUT;
+				command.CommandTimeout = CommandTimeout;
 				using (var reader = command.ExecuteReader())
 				{
 					if (!reader.Read() || reader.IsDBNull(0)) return string.Empty;
@@ -660,25 +578,35 @@ namespace ServiceBrokerListener.Domain
 			}
 		}
 
+		private string SqlCommand(SqlDependencyExOptions options)
+		{
+			return string.Format(
+				SQL_FORMAT_RECEIVE_EVENT,
+				options.DatabaseName,
+				ConversationQueueName,
+				CommandTimeout / 2,
+				options.SchemaName);
+		}
+
 		private string GetUninstallNotificationProcedureScript()
 		{
 			var uninstallServiceBrokerNotificationScript = string.Format(
 				SQL_FORMAT_UNINSTALL_SERVICE_BROKER_NOTIFICATION,
 				ConversationQueueName,
 				ConversationServiceName,
-				SchemaName);
+				ConnectionOptions.SchemaName);
 			var uninstallNotificationTriggerScript = string.Format(
 				SQL_FORMAT_DELETE_NOTIFICATION_TRIGGER,
 				ConversationTriggerName,
-				SchemaName);
+				ConnectionOptions.SchemaName);
 			var uninstallationProcedureScript =
 				string.Format(
 					SQL_FORMAT_CREATE_UNINSTALLATION_PROCEDURE,
-					DatabaseName,
+					ConnectionOptions.DatabaseName,
 					UninstallListenerProcedureName,
 					uninstallServiceBrokerNotificationScript.Replace("'", "''"),
 					uninstallNotificationTriggerScript.Replace("'", "''"),
-					SchemaName,
+					ConnectionOptions.SchemaName,
 					InstallListenerProcedureName);
 			return uninstallationProcedureScript;
 		}
@@ -687,34 +615,34 @@ namespace ServiceBrokerListener.Domain
 		{
 			var installServiceBrokerNotificationScript = string.Format(
 				SQL_FORMAT_INSTALL_SEVICE_BROKER_NOTIFICATION,
-				DatabaseName,
+				ConnectionOptions.DatabaseName,
 				ConversationQueueName,
 				ConversationServiceName,
-				SchemaName);
+				ConnectionOptions.SchemaName);
 			var installNotificationTriggerScript =
 				string.Format(
 					SQL_FORMAT_CREATE_NOTIFICATION_TRIGGER,
-					TableName,
+					ConnectionOptions.TableName,
 					ConversationTriggerName,
 					GetTriggerTypeByListenerType(),
 					ConversationServiceName,
 					DetailsIncluded ? string.Empty : @"NOT",
-					SchemaName);
+					ConnectionOptions.SchemaName);
 			var uninstallNotificationTriggerScript =
 				string.Format(
 					SQL_FORMAT_CHECK_NOTIFICATION_TRIGGER,
 					ConversationTriggerName,
-					SchemaName);
+					ConnectionOptions.SchemaName);
 			var installationProcedureScript =
 				string.Format(
 					SQL_FORMAT_CREATE_INSTALLATION_PROCEDURE,
-					DatabaseName,
+					ConnectionOptions.DatabaseName,
 					InstallListenerProcedureName,
 					installServiceBrokerNotificationScript.Replace("'", "''"),
 					installNotificationTriggerScript.Replace("'", "''''"),
 					uninstallNotificationTriggerScript.Replace("'", "''"),
-					TableName,
-					SchemaName);
+					ConnectionOptions.TableName,
+					ConnectionOptions.SchemaName);
 			return installationProcedureScript;
 		}
 
@@ -736,22 +664,22 @@ namespace ServiceBrokerListener.Domain
 		{
 			var execUninstallationProcedureScript = string.Format(
 				SQL_FORMAT_EXECUTE_PROCEDURE,
-				DatabaseName,
+				ConnectionOptions.DatabaseName,
 				UninstallListenerProcedureName,
-				SchemaName);
-			ExecuteNonQuery(execUninstallationProcedureScript, ConnectionString);
+				ConnectionOptions.SchemaName);
+			ExecuteNonQuery(execUninstallationProcedureScript, ConnectionOptions.ConnectionString);
 		}
 
 		private void InstallNotification()
 		{
 			var execInstallationProcedureScript = string.Format(
 				SQL_FORMAT_EXECUTE_PROCEDURE,
-				DatabaseName,
+				ConnectionOptions.DatabaseName,
 				InstallListenerProcedureName,
-				SchemaName);
-			ExecuteNonQuery(GetInstallNotificationProcedureScript(), ConnectionString);
-			ExecuteNonQuery(GetUninstallNotificationProcedureScript(), ConnectionString);
-			ExecuteNonQuery(execInstallationProcedureScript, ConnectionString);
+				ConnectionOptions.SchemaName);
+			ExecuteNonQuery(GetInstallNotificationProcedureScript(), ConnectionOptions.ConnectionString);
+			ExecuteNonQuery(GetUninstallNotificationProcedureScript(), ConnectionOptions.ConnectionString);
+			ExecuteNonQuery(execInstallationProcedureScript, ConnectionOptions.ConnectionString);
 		}
 
 		private void OnTableChanged(string message)

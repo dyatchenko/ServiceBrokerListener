@@ -44,8 +44,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="NotificationTypes.cs" />
     <Compile Include="SqlDependencyEx.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SqlDependencyExOptions.cs" />
+    <Compile Include="TableChangedEventArgs.cs" />
     <Compile Include="TsqlHelper.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
