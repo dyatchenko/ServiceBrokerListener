@@ -257,7 +257,7 @@ namespace ServiceBrokerListener.Domain
                 DEALLOCATE Conv;
 
                 -- Droping service and queue.
-                IF @serviceId >= 0
+                IF (@serviceId IS NOT NULL)
                     DROP SERVICE [{1}];
                 IF OBJECT_ID ('{2}.{0}', 'SQ') IS NOT NULL
 	                DROP QUEUE {2}.[{0}];
