@@ -210,7 +210,7 @@ namespace ServiceBrokerListener.Domain
         private const string SQL_FORMAT_INSTALL_SEVICE_BROKER_NOTIFICATION = @"
                 -- Setup Service Broker
                 IF EXISTS (SELECT * FROM sys.databases 
-                                    WHERE name = '{0}' AND (is_broker_enabled = 0 OR is_trustworthy_on = 0)) 
+                                    WHERE name = '{0}' AND is_broker_enabled = 0) 
                 BEGIN
 
                     ALTER DATABASE [{0}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE
@@ -219,7 +219,6 @@ namespace ServiceBrokerListener.Domain
 
                     -- FOR SQL Express
                     ALTER AUTHORIZATION ON DATABASE::[{0}] TO [sa]
-                    ALTER DATABASE [{0}] SET TRUSTWORTHY ON;
 
                 END
 
