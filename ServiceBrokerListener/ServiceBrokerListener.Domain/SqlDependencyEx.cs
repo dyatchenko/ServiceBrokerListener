@@ -223,10 +223,10 @@ namespace ServiceBrokerListener.Domain
                 END
 
                 -- Create a queue which will hold the tracked information 
-                IF NOT EXISTS (SELECT * FROM sys.service_queues WHERE name = '{1}')
+                IF NOT EXISTS (SELECT * FROM sys.service_queues WHERE name = '{3}.{1}')
 	                CREATE QUEUE {3}.[{1}]
                 -- Create a service on which tracked information will be sent 
-                IF NOT EXISTS(SELECT * FROM sys.services WHERE name = '{2}')
+                IF NOT EXISTS(SELECT * FROM sys.services WHERE name = '{3}.{2}')
 	                CREATE SERVICE [{2}] ON QUEUE {3}.[{1}] ([DEFAULT]) 
             ";
 
