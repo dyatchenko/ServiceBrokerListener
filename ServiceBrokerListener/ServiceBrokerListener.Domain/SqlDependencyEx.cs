@@ -26,14 +26,16 @@ namespace ServiceBrokerListener.Domain
         public class TableChangedEventArgs : EventArgs
         {
             private readonly string notificationMessage;
+            private readonly string tableNameWithShema;
 
             private const string INSERTED_TAG = "inserted";
 
             private const string DELETED_TAG = "deleted";
 
-            public TableChangedEventArgs(string notificationMessage)
+            public TableChangedEventArgs(string notificationMessage,string tableNameWithShema)
             {
                 this.notificationMessage = notificationMessage;
+                this.tableNameWithShema = tableNameWithShema;
             }
 
             public XElement Data
@@ -42,7 +44,7 @@ namespace ServiceBrokerListener.Domain
                 {
                     if (string.IsNullOrWhiteSpace(notificationMessage)) return null;
 
-                    return ReadXDocumentWithInvalidCharacters(notificationMessage);
+                    return ReadXDocumentWithInvalidCharacters(notificationMessage, tableNameWithShema);
                 }
             }
 
@@ -66,11 +68,11 @@ namespace ServiceBrokerListener.Domain
             /// </summary>
             /// <param name="xml">The input string.</param>
             /// <returns>The result XElement.</returns>
-            private static XElement ReadXDocumentWithInvalidCharacters(string xml)
+            private static XElement ReadXDocumentWithInvalidCharacters(string xml,string tblName)
             {
                 XDocument xDocument = null;
 
-                XmlReaderSettings xmlReaderSettings = new XmlReaderSettings {CheckCharacters = false};
+                XmlReaderSettings xmlReaderSettings = new XmlReaderSettings { CheckCharacters = false };
 
                 using (var stream = new StringReader(xml))
                 using (XmlReader xmlReader = XmlReader.Create(stream, xmlReaderSettings))
@@ -79,6 +81,8 @@ namespace ServiceBrokerListener.Domain
                     xmlReader.MoveToContent();
                     xDocument = XDocument.Load(xmlReader);
                 }
+
+                xDocument.Root.Add(new XDocument("Table",tblName));
 
                 return xDocument.Root;
             }
@@ -778,10 +782,11 @@ namespace ServiceBrokerListener.Domain
 
         private void OnTableChanged(string message)
         {
+            var tblWithShem = SchemaName + "." + TableName;
             var evnt = this.TableChanged;
             if (evnt == null) return;
 
-            evnt.Invoke(this, new TableChangedEventArgs(message));
+            evnt.Invoke(this, new TableChangedEventArgs(message, tblWithShem));
         }
 
         private void OnNotificationProcessStopped()
